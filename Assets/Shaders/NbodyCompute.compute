@@ -1,0 +1,422 @@
+﻿//https://gitlab.com/tzaeru/nbody-simulation-tutorial-code-project
+//https://www.tzaeru.com/site/compute-shader-basics-with-unity/
+//https://mickyd.wordpress.com/2014/02/01/n-body-galaxy-simulation-using-compute-shaders-on-gpgpu-via-unity-3d/
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+uniform RWStructuredBuffer<float3> position : register(u1);
+uniform RWStructuredBuffer<float3> velocity : register(u2);
+uniform RWStructuredBuffer<float3> mass : register(u3);
+uniform RWStructuredBuffer<float> radius : register(u4);
+uniform RWStructuredBuffer<float> luminosity : register(u5);
+uniform RWStructuredBuffer<float4> tgb : register(u6);
+uniform RWStructuredBuffer<float4> lgb : register(u7);
+
+uniform uint NumBodies;
+uniform float Softening;
+uniform float G;
+uniform float neta; //Reimer's mass loss coefficient
+
+uniform float deltaTime; //time elapsed since last frame (dt)
+uniform float time; //total elapsed time
+
+//only relevant if we want collisions enabled
+uniform float dvelMax; //max velocity for inelastic collision with recoil (otherwise merge bodies)
+uniform float rcolFac; //radius scaling for collision detection
+uniform float restitution; //factor applied to velocity upon collision recoil 
+
+#define Softening2  Softening*Softening
+#define PI 3.141592653589793
+
+//in units of parsecs
+#define RSun 2.2546101516841093e-08
+
+// same as in NBodyCompute
+#define BLOCKSIZE	128
+
+
+float MSRadFromMass(float m){
+	//not sure where this came from
+	float eta = 0.8f;
+
+	if (m > 1.0){ 
+		eta = 0.57;
+	} 
+
+	return pow(m, eta);
+}
+
+
+float mlwindReimers(float L, float R, float M){
+	//dmass/dt from winds from Reimer's equation (using eq. 106 in Hurley, Pols & Tout 2000, the SSE paper)
+	return neta*4e-13*L*(R*RSun)/M;
+}
+
+float giantLum(float tbg, float lbg, float AH){
+	//RGB luminosity vs. time
+	//eq. 25 in Jurley Pols & Tout 2000, the SSE paper
+
+	//I *think* I can use this for both AGB and RGB, but just changing AH
+	//on RGB: 	float AH = 1.44e-5; //Msun / Lsun /Myr //eq. a few after 43
+	//on AGB:	float AH = 7.66e-5; //Msun / Lsun /Myr //eq. 68
+
+	//simplifying this a little bit, in the paper these constants depend on mass and metallicity
+	float p = 5.0;
+	float psi = 1.0; //this could depend on metallicity
+	float D = pow(10., 5.37 + 0.135*psi);
+
+	float tinf = tbg + 1./(AH*D*(p - 1.))*pow(D/lbg, (p - 1.)/p);
+
+	return max(D*pow( (p - 1.0)*AH*D*(tinf - time), p/(1. - p)), 1e-6);
+}
+
+float RGBRad(float m, float L){
+	//RGB radius for solar mass stars (could use eq. 46 if we want metallicity dependence)
+	//eq. 48 in Hurley, Pols & Tout 2000
+
+	return max(1.1*pow(m, -0.3)*(pow(L, 0.4) + 0.383*pow(L, 0.76)), 0.0);
+}
+float AGBRad(float m, float L){
+	//AGB radius for solar mass stars (could use eq. 74 if we want metallicity dependence)
+	//eq. slightly after 74 in Hurley, Pols & Tout 2000
+	//nearly identical to the RGBRad... is this a mistake in his paper?
+
+	return max(1.125*pow(m, -0.33)*(pow(L, 0.4) + 0.383*pow(L, 0.76)), 0.0);
+}
+//for allowing collisions that don't merge...
+// I think I need to keep track of aggregate groups, and apply their gravity as a final step.  That way particles that are touching will still feel the gravity of other particles.
+// 1. need separate array that sorts the particles (maybe just saves the indices in order)
+// 2. then a second array that has the starting indices of each group
+// 3. then I just need gravity between groups, and apply the same forces to everyone inside a group
+
+//to check for collisions, I will see if the trajectory of particle idx intersects with particle i, to within the distance set with the radii and rcolFac
+//https://en.wikipedia.org/wiki/Distance_from_a_point_to_a_line
+//http://geomalgorithms.com/a02-_lines.html
+//https://stackoverflow.com/questions/3120357/get-closest-point-to-a-line
+float4 line_point_dist(float3 A, float3 B, float3 P){
+
+	float3 AB = B - A;
+	float3 AP = P - A;
+	float3 BP = P - B;
+
+	if (length(AB) == 0.0){
+		return float4(A, length(AP));
+	}
+
+	float APdotAB = dot(AP, AB);
+	float t = APdotAB/(length(AB)*length(AB)); //The normalized "distance" from A to the closest point
+
+	if (t < 0.0){
+		// Point is lagging behind start of the segment, so perpendicular distance is not viable.
+		// Use distance to start of segment instead.
+		return float4(A, length(AP));
+	}
+
+	if (t > 1.0){
+		// Point is advanced past the end of the segment, so perpendicular distance is not viable.
+		// Use distance to end of the segment instead.
+		return float4(B, length(BP));
+	}
+
+	// Perpendicular distance of point to segment.
+	//https://stackoverflow.com/questions/4858264/find-the-distance-from-a-3d-point-to-a-line-segment
+	float dist = length(cross(AB, AP))/length(AB);
+
+	return float4(A + AB*t, dist);
+}
+
+
+float4 get_acc_grav(uint idx, float3 pos){
+	//4th value is a collision detection
+	float3 A = float3(0.0, 0.0, 0.0);
+	float AC = -1;
+
+	// Iterate over every body.
+	for (uint i = 0; i < NumBodies; i++){
+		if (i != idx && mass[i].x > 0.0){
+
+			float4 intrsct = line_point_dist(position[idx], pos, position[i]);
+
+			if (intrsct.w <= rcolFac*(radius[i] + radius[idx])*RSun) {
+				//collision
+				AC = i;
+
+			} else {
+				//normal gravity
+				float3 D = position[i] - pos;
+				float r = length(D);
+				float fm = G*mass[i].x/(r*r + Softening2);
+				A += fm*normalize(D);
+			}
+
+		}
+	}
+
+	return float4(A, AC);
+
+}  
+
+float3 get_acc_grav_simple(uint idx){
+	//4th value is a collision detection
+	float3 A = float3(0.0, 0.0, 0.0);
+
+	// Iterate over every body.
+	for (uint i = 0; i < NumBodies; i++){
+		if (i != idx){
+
+			//normal gravity
+			float3 D = position[i] - position[idx];
+			float r = length(D);
+			float fm = G*mass[i].x/(r*r + Softening2);
+			A += fm*normalize(D);
+
+		}
+	}
+	return A;
+}  
+
+//Verlet leapfrog
+//https://en.wikipedia.org/wiki/Verlet_integration
+float4x4 integrateVerlet(uint idx, float dt){
+// void integrateVerlet(uint idx, float dt){
+
+	float4 old_acc = get_acc_grav(idx, position[idx]);
+	float3 new_pos = position[idx] + velocity[idx]*dt + 0.5*old_acc.xyz*dt*dt;
+	float4 new_acc = get_acc_grav(idx, new_pos);
+	float3 new_vel = velocity[idx] + 0.5*(old_acc.xyz + new_acc.xyz)*dt;
+
+	return float4x4(float4(new_pos,0), float4(new_vel,0), new_acc, float4(0,0,0,0));
+}
+
+
+//Verlet leapfrog
+//https://en.wikipedia.org/wiki/Verlet_integration
+void integrateVerletCollision(uint idx, float dt){
+// void integrateVerlet(uint idx, float dt){
+
+	float4x4 result = integrateVerlet(idx, dt);
+	float3 new_pos = result[0].xyz;
+	float3 new_vel = result[1].xyz;
+	float4 new_acc = result[2];
+
+	//simple inelastic collision detection
+	//if (old_acc.w != -1 || new_acc.w != -1) {
+	if (new_acc.w != -1) {
+		new_pos = position[idx];
+		new_vel = velocity[idx];
+
+		//get the fraction of the time until the collision
+		uint i = new_acc.w;
+
+		float3 A = position[idx];
+		float3 B = new_pos;
+		float3 P = position[i];
+		float4 pt = line_point_dist(A, B, P); //need this for the intersection position.  can I just get t from here?
+		float3 AB = B - A;
+		float3 AP = P - A;
+		float APdotAB = dot(AP, AB);
+		float t = APdotAB/(length(AB)*length(AB)); //The normalized "distance" from A to the closest point
+		t = min(max(t, 0.0), 1.0); //to be safe (is there a clamp function?)
+
+		/////////////////////////////////////////////
+		//take the first step, which will result in the collision
+		float dt1 = dt*t;
+		if (dt1 > 0.0){
+			result = integrateVerlet(idx, dt1);
+			new_pos = result[0].xyz;
+			new_vel = result[1].xyz;
+			position[idx] = new_pos;
+			velocity[idx] = new_vel;
+		}
+		/////////////////////////////////////////////
+
+		/////////////////////////////////////////////
+		//apply the collision
+		//I would like to make this it's own function, but for some reason it won't work that way.  No idea why!
+
+		float3 dvel = velocity[i] - velocity[idx];
+
+		if (length(dvel) >= dvelMax){
+			//inelastic collisions with restitution (bounce off with some friction term)
+			new_vel *= -restitution;
+			new_pos = pt.xyz; 
+
+		} else {
+			
+			//inelastic collisions that stick together
+			float totalMass = mass[idx].x + mass[i].x;
+			float3 mom = mass[idx].x*velocity[idx] + mass[i].x*velocity[i];
+
+			if (idx < i && totalMass > 0.0) {
+
+				// This particle is aggregated by the other
+				new_vel = mom/totalMass;
+				new_pos = (position[idx]*mass[idx].x + position[i]*mass[i].x)/totalMass;
+				//luminosity[idx] = ?
+				mass[idx].x = totalMass;
+				//radius[idx] = MSRadFromMass(totalMass);
+
+			} else {
+				// This particle dies
+				mass[idx].x = 0.0;
+				radius[idx] = 0.0;
+				new_vel = 0.0;
+			}
+		}
+		position[idx] = new_pos;
+		velocity[idx] = new_vel;
+		/////////////////////////////////////////////
+
+		/////////////////////////////////////////////
+		// now take the remaining time step
+		if (dt - dt1 > 0.0){
+			result = integrateVerlet(idx, dt - dt1);
+			if (result[2].w == -1) { //what if there is also a collision here??  with this if statement, I'm back to the same problem with aggregate bodies not attracting eachother.  Without this, everything collapses.
+				new_pos = result[0].xyz;
+				new_vel = result[1].xyz;
+			}
+		}
+		/////////////////////////////////////////////
+
+	}
+
+	position[idx] = new_pos;
+	velocity[idx] = new_vel;
+
+}
+
+// //rk4
+// //http://spiff.rit.edu/richmond/nbody/OrbitRungeKutta4.pdf
+// //I added the velocities for my collision detection, but is this correct?
+// void integrateRK4(uint idx){
+// 	//float3 dxC = handle_collisions(idx, float3(0,0,0));
+
+// 	float3 k1r = velocity[idx];
+// 	float3 k1v = get_acc_grav(idx, position[idx]);
+
+// 	float3 k2r = velocity[idx]*k1v*deltaTime/2.;
+// 	float3 k2v = get_acc_grav(idx, position[idx] + k1r*deltaTime/2.);	
+
+// 	float3 k3r = velocity[idx]*k2v*deltaTime/2.;
+// 	float3 k3v = get_acc_grav(idx, position[idx] + k2r*deltaTime/2.);
+
+// 	float3 k4r = velocity[idx]*k3v*deltaTime; 
+// 	float3 k4v = get_acc_grav(idx, position[idx] + k3r*deltaTime);
+
+// 	//check if we had any collisions
+// 	float3 dx = deltaTime/6.*(k1r + 2.*k2r + 2.*k3r + k4r);
+// 	float3 dv = deltaTime/6.*(k1v + 2.*k2v + 2.*k3v + k4v);
+
+// 	position[idx] += dx;
+// 	velocity[idx] += dv;
+
+// }
+
+
+//Verlet leapfrog
+//https://en.wikipedia.org/wiki/Verlet_integration
+void integrateVerletSimple(uint idx, float dt){
+// void integrateVerlet(uint idx, float dt){
+
+	float3 old_acc = get_acc_grav_simple(idx);
+	position[idx] += velocity[idx]*dt + 0.5*old_acc*dt*dt;
+	float3 new_acc = get_acc_grav_simple(idx);
+	velocity[idx] += 0.5*(old_acc + new_acc)*dt;
+
+}
+
+//Verlet leapfrog
+//https://en.wikipedia.org/wiki/Verlet_integration
+void integrateVerletSimpleEvolve(uint idx, float dt){
+// void integrateVerlet(uint idx, float dt){
+
+	float3 old_acc = get_acc_grav_simple(idx);
+	position[idx] += velocity[idx]*dt + 0.5*old_acc*dt*dt;
+	float3 new_acc = get_acc_grav_simple(idx);
+	velocity[idx] += 0.5*(old_acc + new_acc)*dt;
+
+	if (time >= tgb[idx].x && time < tgb[idx].y){ // RGB
+		float ml = mlwindReimers(luminosity[idx], radius[idx], mass[idx].x)*dt;
+		mass[idx].x -= ml;
+		luminosity[idx] = giantLum(tgb[idx].x, lgb[idx].x, 1.44e-5);
+		radius[idx] = RGBRad(mass[idx].x, luminosity[idx]);
+	}  
+	if (time >= tgb[idx].y && time < tgb[idx].z){ //He burning
+		luminosity[idx] = lgb[idx].y; //no evolution for now
+		radius[idx] = RGBRad(mass[idx].x, luminosity[idx]); //this calculation is actually only needed once if the luminosity doesn't change
+	}  
+	if (time >= tgb[idx].z && time < tgb[idx].w){// AGB
+		//for now
+		float ml = mlwindReimers(luminosity[idx], radius[idx], mass[idx].x)*dt;
+		mass[idx].x -= ml;
+		luminosity[idx] = giantLum(tgb[idx].z, lgb[idx].z, 7.66e-5);
+		radius[idx] = AGBRad(mass[idx].x, luminosity[idx]);
+	}  
+	if (time > tgb[idx].w){ //remnant phase
+		//approximate divisions
+		radius[idx] = 5.0;
+		if (mass[idx].y > 20.0){ // black holes
+			//supernova
+			if (mass[idx].z < 0){
+				luminosity[idx] = -40.0;
+				mass[idx].z = mass[idx].x;
+				radius[idx] = 1e10;
+			}  else {
+				//set render type
+				luminosity[idx] = -30.0;
+			}
+
+		} else if (mass[idx].y > 4.0){ //neutron stars
+			//supernova
+			if (mass[idx].z < 0){
+				luminosity[idx] = -40.0;
+				mass[idx].z = mass[idx].x;
+				radius[idx] = 1e10;
+				velocity[idx] *= 265.;// sigma for NS SNe kick from Hobbs
+			}  else {
+				//set render type
+				luminosity[idx] = -20.0;
+				mass[idx].x = 2.0;
+			}
+
+		} else { //white dwarfs
+			//set render type
+			luminosity[idx] = -10.0;
+			mass[idx].x = 0.5;
+
+		}
+
+	} 
+	//need something for remnant
+
+}
+
+void integrateSimple(uint idx, float dt){
+// void integrateVerlet(uint idx, float dt){
+
+	float3 acc = get_acc_grav_simple(idx);
+	velocity[idx] += acc*dt;
+	position[idx] += velocity[idx]*dt;// + 0.5*acc*dt*dt;
+
+}
+
+[numthreads(BLOCKSIZE,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+
+//both integrators seem to work OK with my simple test if Softening ~ 25, and collision detection is on
+//RK4 has some bug, but since Verlet is working, I didn't fix it (yet)
+	if (mass[id.x].x > 0.0){
+		//integrateVerletCollision(id.x, deltaTime);
+
+		// float4x4 result = integrateVerlet(id.x, deltaTime);
+		// position[id.x] = result[0].xyz;
+		// velocity[id.x] = result[1].xyz;
+
+		integrateVerletSimpleEvolve(id.x, deltaTime);
+
+		//integrateSimple(id.x, deltaTime);
+
+		//integrateRK4(id.x);
+	}
+}
