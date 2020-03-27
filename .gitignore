@@ -5,3 +5,5 @@ Logs/*
 Packages/*
 Temp/*
 *.app
+
+.DS_Store
