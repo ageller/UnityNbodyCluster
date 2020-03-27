@@ -3,3 +3,4 @@ ProjectSettings/*
 obj/*
 Logs/*
 Packages/*
+*.app
