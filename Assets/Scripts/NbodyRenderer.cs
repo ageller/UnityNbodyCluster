@@ -10,6 +10,9 @@ public class NbodyRenderer : MonoBehaviour {
 	public Texture colormap;
 	public float minSize = 0.02f;
 	public float maxSize = 0.5f;
+	public float BHSize = 0.1f;
+	public float NSSize = 0.1f;
+	public float WDSize = 0.1f;
 
 	Matrix4x4[][] transformList;
 	int[] instances;
@@ -25,6 +28,9 @@ public class NbodyRenderer : MonoBehaviour {
 
 	private Transform CameraTarget;
 
+    public void BHSizeReceiver(float val){
+        BHSize = val;
+    }
 
 	// Use this for initialization
 	void Start () {
@@ -98,6 +104,9 @@ public class NbodyRenderer : MonoBehaviour {
 			mpb.SetInt("offset", set*instance_max);
 			mpb.SetFloat("minSize", minSize);
 			mpb.SetFloat("maxSize", maxSize);
+			mpb.SetFloat("BHSize", BHSize);
+			mpb.SetFloat("NSSize", NSSize);
+			mpb.SetFloat("WDSize", WDSize);
 			mpb.SetTexture("colormap", colormap);
 
 			for (int i = 0; i < instances[set]; i++)

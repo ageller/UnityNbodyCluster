@@ -43,6 +43,10 @@ Shader "Custom/Star"
 			uniform float minSize;
 			uniform float maxSize;
 
+			uniform float BHSize;
+			uniform float NSSize;
+			uniform float WDSize;
+
 			//in units of parsecs
 			//#define RSun 2.2546101516841093e-08
 
@@ -55,8 +59,10 @@ Shader "Custom/Star"
 			struct v2f {
 				float4 pos : SV_POSITION;
 				float4 vertex : VERTEX;
-				float teff: TEFF;
 				float rad: RADIUS;
+				float teff: TEFF;
+				float4 color: COLOR;
+				int special: SPECIAL;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 			};
 
@@ -94,10 +100,42 @@ Shader "Custom/Star"
 				float4 viewDir = float4(v.vertex.x, v.vertex.y, 0.0, 0.0);  
 
 				//scaling, if desired
-				float rad = log(radius[instancePos + offset])*_Scale;
-				if (luminosity[instancePos + offset] > 0.) rad = clamp(rad, minSize, maxSize); //allow remnants and SNe to be any size
-				o.rad = rad;
+				float rad = 1.;
+				if (luminosity[instancePos + offset] > 0.) {
+					rad = clamp(log(radius[instancePos + offset])*_Scale, minSize, maxSize);
+					o.teff = TeffFromLR(luminosity[instancePos + offset], radius[instancePos + offset]);
+					o.special = 0;
+				} else{
 
+					o.special = 2;
+					o.teff = 0.;
+
+					if (luminosity[instancePos + offset] == -40.){ //supernovae
+						o.color = float4(1., 1., 0., 1.);
+						rad = 3.;
+						o.special = 1;
+					}
+
+					if (luminosity[instancePos + offset] == -30.){ //black holes
+						o.color = float4(0., 1., 0., 0.5);
+						rad = BHSize;
+					}
+
+					if (luminosity[instancePos + offset] == -20.){ //neutron stars
+						o.color = float4(1., 0., 1., 0.5);
+						rad = NSSize;
+					}
+
+					if (luminosity[instancePos + offset] == -10.){ //white dwarfs
+						o.color = float4(0., 1., 1., 0.5);
+						rad = WDSize;
+					}
+
+				}
+
+
+				o.rad = rad;
+				
 				//float rad = 1.0;
 				float4 scale = float4(rad, rad, 1.0, 1.0); 
 				
@@ -108,10 +146,6 @@ Shader "Custom/Star"
 
 				//then multiply by UNITY_MATRIX_P to get the new projected vertex position
 				o.pos = mul(UNITY_MATRIX_P, pos);
-				
-				//o.pos = UnityObjectToClipPos(pos);
-
-				o.teff = TeffFromLR(luminosity[instancePos + offset], radius[instancePos + offset]);
 
 				return o;
 			}
@@ -126,30 +160,17 @@ Shader "Custom/Star"
 
 				if (dist >= 1.) discard;
 
-				float scaledTeff = clamp( ((i.teff - 1000.)/19000.), 0.01, 0.99);
-				float4 color = tex2D(colormap, float2(scaledTeff, 0.5));
-				
-				float brightness = 1. - dist;
-				float alpha = 1. - pow(dist, 3.);
-				float3 useColor = float3(lerp(float3(1.0, 1.0, 1.0), color.xyz, clamp(1.1 - brightness, 0.0, 1.0)));
+				float3 useColor = i.color.rgb;
+				float alpha = i.color.a;
 
-				if (i.teff == -40.){ //supernovae
-					useColor = float3(1., 1., 0.);
+				if (i.special < 1){
+					float scaledTeff = clamp( ((i.teff - 1000.)/19000.), 0.01, 0.99);
+					float4 color = tex2D(colormap, float2(scaledTeff, 0.5));
+					float brightness = 1. - dist;
+					useColor = float3(lerp(float3(1.0, 1.0, 1.0), color.rgb, clamp(1.1 - brightness, 0.0, 1.0)));
 				}
-
-				if (i.teff == -30.){ //black holes
-					useColor = float3(0., 1., 0.);
-					alpha = 0.5;
-				}
-
-				if (i.teff == -20.){ //neutron stars
-					useColor = float3(1., 0., 1.);
-					alpha = 0.5;
-				}
-
-				if (i.teff == -10.){ //white dwarfs
-					useColor = float3(0., 1., 1.);
-					alpha = 0.5;
+				if (i.special < 2){
+					alpha = 1. - pow(dist, 3.);
 				}
 
 				return float4(useColor, alpha);
