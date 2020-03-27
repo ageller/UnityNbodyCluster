@@ -8,7 +8,9 @@ public class ButtonController : MonoBehaviour {
 	private bool started = false;
 	private bool paused = false;
 
-	void Start(){}
+	void Start(){
+		Time.timeScale = 0;
+	}
 
 	public void StartButtonClicked(){
 		if (started){
@@ -40,6 +42,6 @@ public class ButtonController : MonoBehaviour {
 	}
 
 	public void RestartButtonClicked(){
-		SceneManager.LoadScene("NbodySimulator");
+		SceneManager.LoadScene("NbodyStarCluster");
 	}
 }
