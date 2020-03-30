@@ -32,7 +32,8 @@ Shader "Custom/Star"
 			#include "UnityCG.cginc"
 
 			//I think this is where the position is pulled from the compute shader
-			uniform StructuredBuffer<float3> position : register(t1);
+			//uniform StructuredBuffer<float3> position : register(t1);
+			uniform StructuredBuffer<float3> positionCoM : register(t8);
 			uniform StructuredBuffer<float> radius : register(t4);
 			uniform StructuredBuffer<float> luminosity : register(t5);
 
@@ -46,6 +47,7 @@ Shader "Custom/Star"
 			uniform float BHSize;
 			uniform float NSSize;
 			uniform float WDSize;
+			uniform float NmlSize;
 
 			//in units of parsecs
 			//#define RSun 2.2546101516841093e-08
@@ -102,7 +104,7 @@ Shader "Custom/Star"
 				//scaling, if desired
 				float rad = 1.;
 				if (luminosity[instancePos + offset] > 0.) {
-					rad = clamp(log(radius[instancePos + offset])*_Scale, minSize, maxSize);
+					rad = clamp(log(radius[instancePos + offset])*_Scale, minSize, maxSize)*NmlSize;
 					o.teff = TeffFromLR(luminosity[instancePos + offset], radius[instancePos + offset]);
 					o.special = 0;
 				} else{
@@ -118,18 +120,19 @@ Shader "Custom/Star"
 
 					if (luminosity[instancePos + offset] == -30.){ //black holes
 						o.color = float4(0., 1., 0., 0.5);
-						rad = BHSize;
+						rad = BHSize*_Scale;
 					}
 
 					if (luminosity[instancePos + offset] == -20.){ //neutron stars
 						o.color = float4(1., 0., 1., 0.5);
-						rad = NSSize;
+						rad = NSSize*_Scale;
 					}
 
 					if (luminosity[instancePos + offset] == -10.){ //white dwarfs
 						o.color = float4(0., 1., 1., 0.5);
-						rad = WDSize;
+						rad = WDSize*_Scale;
 					}
+
 
 				}
 
@@ -142,7 +145,8 @@ Shader "Custom/Star"
 				// Add the camera position and direction, 
 				float4 pos = camPos + viewDir*scale; 
 
-				pos += float4(UnityObjectToViewPos(position[instancePos + offset]), 0.0f);
+				pos += float4(UnityObjectToViewPos(positionCoM[instancePos + offset]), 0.0f);
+				//pos += float4(UnityObjectToViewPos(position[instancePos + offset]), 0.0f);
 
 				//then multiply by UNITY_MATRIX_P to get the new projected vertex position
 				o.pos = mul(UNITY_MATRIX_P, pos);

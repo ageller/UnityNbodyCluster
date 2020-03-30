@@ -2,6 +2,11 @@
 //https://www.tzaeru.com/site/compute-shader-basics-with-unity/
 //https://mickyd.wordpress.com/2014/02/01/n-body-galaxy-simulation-using-compute-shaders-on-gpgpu-via-unity-3d/
 // Each #kernel tells which function to compile; you can have many kernels
+
+//getting units of pc, solMass, Myr BUT radii are in RSun
+//I need this in a frame of reference where the galaxy center moves, and the cluster is stationary!
+
+#pragma kernel CoMCompute
 #pragma kernel CSMain
 
 uniform RWStructuredBuffer<float3> position : register(u1);
@@ -11,6 +16,7 @@ uniform RWStructuredBuffer<float> radius : register(u4);
 uniform RWStructuredBuffer<float> luminosity : register(u5);
 uniform RWStructuredBuffer<float4> tgb : register(u6);
 uniform RWStructuredBuffer<float4> lgb : register(u7);
+uniform RWStructuredBuffer<float3> positionCoM : register(u8);
 
 uniform uint NumBodies;
 uniform float Softening;
@@ -20,6 +26,9 @@ uniform float neta; //Reimer's mass loss coefficient
 uniform float deltaTime; //time elapsed since last frame (dt)
 uniform float time; //total elapsed time
 
+//external point mass galaxy G*M/Rgc**2
+uniform float fmGal;
+
 //only relevant if we want collisions enabled
 uniform float dvelMax; //max velocity for inelastic collision with recoil (otherwise merge bodies)
 uniform float rcolFac; //radius scaling for collision detection
@@ -27,9 +36,7 @@ uniform float restitution; //factor applied to velocity upon collision recoil
 
 #define Softening2  Softening*Softening
 #define PI 3.141592653589793
-
-//in units of parsecs
-#define RSun 2.2546101516841093e-08
+#define RSun 2.2546101516841093e-08f
 
 // same as in NBodyCompute
 #define BLOCKSIZE	128
@@ -37,6 +44,7 @@ uniform float restitution; //factor applied to velocity upon collision recoil
 
 float MSRadFromMass(float m){
 	//not sure where this came from
+	//http://personal.psu.edu/rbc3/A534/lec18.pdf
 	float eta = 0.8f;
 
 	if (m > 1.0){ 
@@ -49,7 +57,8 @@ float MSRadFromMass(float m){
 
 float mlwindReimers(float L, float R, float M){
 	//dmass/dt from winds from Reimer's equation (using eq. 106 in Hurley, Pols & Tout 2000, the SSE paper)
-	return neta*4e-13*L*(R*RSun)/M;
+	//is this using the correct units?
+	return neta*4e-13*L*R/M;
 }
 
 float giantLum(float tbg, float lbg, float AH){
@@ -126,7 +135,7 @@ float4 line_point_dist(float3 A, float3 B, float3 P){
 }
 
 
-float4 get_acc_grav(uint idx, float3 pos){
+float4 get_acc_grav_collision(uint idx, float3 pos){
 	//4th value is a collision detection
 	float3 A = float3(0.0, 0.0, 0.0);
 	float AC = -1;
@@ -157,11 +166,11 @@ float4 get_acc_grav(uint idx, float3 pos){
 }  
 
 float3 get_acc_grav_simple(uint idx){
-	//4th value is a collision detection
 	float3 A = float3(0.0, 0.0, 0.0);
 
 	// Iterate over every body.
-	for (uint i = 0; i < NumBodies; i++){
+	//for (uint i = 0; i < NumBodies; i++){
+	for (uint i = 0; i < NumBodies-1; i++){ //last one is the full cluster for center of mass calculation?
 		if (i != idx){
 
 			//normal gravity
@@ -175,14 +184,21 @@ float3 get_acc_grav_simple(uint idx){
 	return A;
 }  
 
+float3 get_acc_grav_galaxy(uint idx){
+	//acceleration from point-mass galaxy, assuming Mgal >> gal, and Rgc is constant (fmGal = G*Mgal/Rgc**2)
+	//float3 D = galPos - position[idx]; 
+	float3 D = -position[idx]; 
+	return fmGal*normalize(D);
+}
+
 //Verlet leapfrog
 //https://en.wikipedia.org/wiki/Verlet_integration
-float4x4 integrateVerlet(uint idx, float dt){
+float4x4 integrateVerletCollision(uint idx, float dt){
 // void integrateVerlet(uint idx, float dt){
 
-	float4 old_acc = get_acc_grav(idx, position[idx]);
+	float4 old_acc = get_acc_grav_collision(idx, position[idx]);
 	float3 new_pos = position[idx] + velocity[idx]*dt + 0.5*old_acc.xyz*dt*dt;
-	float4 new_acc = get_acc_grav(idx, new_pos);
+	float4 new_acc = get_acc_grav_collision(idx, new_pos);
 	float3 new_vel = velocity[idx] + 0.5*(old_acc.xyz + new_acc.xyz)*dt;
 
 	return float4x4(float4(new_pos,0), float4(new_vel,0), new_acc, float4(0,0,0,0));
@@ -191,10 +207,10 @@ float4x4 integrateVerlet(uint idx, float dt){
 
 //Verlet leapfrog
 //https://en.wikipedia.org/wiki/Verlet_integration
-void integrateVerletCollision(uint idx, float dt){
+void integrateVerletWithCollision(uint idx, float dt){
 // void integrateVerlet(uint idx, float dt){
 
-	float4x4 result = integrateVerlet(idx, dt);
+	float4x4 result = integrateVerletCollision(idx, dt);
 	float3 new_pos = result[0].xyz;
 	float3 new_vel = result[1].xyz;
 	float4 new_acc = result[2];
@@ -222,7 +238,7 @@ void integrateVerletCollision(uint idx, float dt){
 		//take the first step, which will result in the collision
 		float dt1 = dt*t;
 		if (dt1 > 0.0){
-			result = integrateVerlet(idx, dt1);
+			result = integrateVerletCollision(idx, dt1);
 			new_pos = result[0].xyz;
 			new_vel = result[1].xyz;
 			position[idx] = new_pos;
@@ -270,7 +286,7 @@ void integrateVerletCollision(uint idx, float dt){
 		/////////////////////////////////////////////
 		// now take the remaining time step
 		if (dt - dt1 > 0.0){
-			result = integrateVerlet(idx, dt - dt1);
+			result = integrateVerletCollision(idx, dt - dt1);
 			if (result[2].w == -1) { //what if there is also a collision here??  with this if statement, I'm back to the same problem with aggregate bodies not attracting eachother.  Without this, everything collapses.
 				new_pos = result[0].xyz;
 				new_vel = result[1].xyz;
@@ -318,24 +334,26 @@ void integrateVerletCollision(uint idx, float dt){
 void integrateVerletSimple(uint idx, float dt){
 // void integrateVerlet(uint idx, float dt){
 
-	float3 old_acc = get_acc_grav_simple(idx);
+
+	float3 old_acc = get_acc_grav_simple(idx) + get_acc_grav_galaxy(idx);
+	//float3 old_acc = get_acc_grav_galaxy(idx);
 	position[idx] += velocity[idx]*dt + 0.5*old_acc*dt*dt;
-	float3 new_acc = get_acc_grav_simple(idx);
+	float3 new_acc = get_acc_grav_simple(idx) + get_acc_grav_galaxy(idx);
+	//float3 new_acc = get_acc_grav_galaxy(idx);
 	velocity[idx] += 0.5*(old_acc + new_acc)*dt;
 
 }
 
-//Verlet leapfrog
-//https://en.wikipedia.org/wiki/Verlet_integration
-void integrateVerletSimpleEvolve(uint idx, float dt){
+void integrateSimple(uint idx, float dt){
 // void integrateVerlet(uint idx, float dt){
 
-	float3 old_acc = get_acc_grav_simple(idx);
-	position[idx] += velocity[idx]*dt + 0.5*old_acc*dt*dt;
-	float3 new_acc = get_acc_grav_simple(idx);
-	velocity[idx] += 0.5*(old_acc + new_acc)*dt;
+	float3 acc = get_acc_grav_simple(idx);
+	velocity[idx] += acc*dt;
+	position[idx] += velocity[idx]*dt;// + 0.5*acc*dt*dt;
 
-	if (time >= tgb[idx].x && time < tgb[idx].y){ // RGB
+}
+void applyStellarEvolution(uint idx, float dt){
+		if (time >= tgb[idx].x && time < tgb[idx].y){ // RGB
 		float ml = mlwindReimers(luminosity[idx], radius[idx], mass[idx].x)*dt;
 		mass[idx].x -= ml;
 		luminosity[idx] = giantLum(tgb[idx].x, lgb[idx].x, 1.44e-5);
@@ -385,18 +403,8 @@ void integrateVerletSimpleEvolve(uint idx, float dt){
 		}
 
 	} 
-	//need something for remnant
-
 }
 
-void integrateSimple(uint idx, float dt){
-// void integrateVerlet(uint idx, float dt){
-
-	float3 acc = get_acc_grav_simple(idx);
-	velocity[idx] += acc*dt;
-	position[idx] += velocity[idx]*dt;// + 0.5*acc*dt*dt;
-
-}
 
 [numthreads(BLOCKSIZE,1,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
@@ -404,17 +412,51 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
 //both integrators seem to work OK with my simple test if Softening ~ 25, and collision detection is on
 //RK4 has some bug, but since Verlet is working, I didn't fix it (yet)
-	if (mass[id.x].x > 0.0){
-		//integrateVerletCollision(id.x, deltaTime);
 
-		// float4x4 result = integrateVerlet(id.x, deltaTime);
-		// position[id.x] = result[0].xyz;
-		// velocity[id.x] = result[1].xyz;
+	uint idx = NumBodies - 1;
+	float dt = deltaTime;
 
-		integrateVerletSimpleEvolve(id.x, deltaTime);
+	if (mass[id.x].x > 0.0 && id.x != idx){ //avoid the cluster mass body
+
+		//integrateVerletWithCollision(id.x, dt);
+		integrateVerletSimple(id.x, dt);
+		applyStellarEvolution(id.x, dt);
 
 		//integrateSimple(id.x, deltaTime);
 
 		//integrateRK4(id.x);
+
+		//shift to the center-of-mass frame using the computed full cluster position
+		positionCoM[id.x] = position[id.x] - position[idx];
+
 	}
+}
+
+float3 CoM(){
+	float3 p = float3(0.0, 0.0, 0.0);
+
+	// Iterate over every body.
+	for (uint i = 0; i < NumBodies; i++){
+
+		p += position[i];
+
+	}
+	return p/NumBodies;
+} 
+
+//run this in the separate Kernel so that it is always executed first (hopefully)
+// otherwise, some of the particles are shifted before others, and the cluster appears to blink
+[numthreads(1,1,1)]
+void CoMCompute (uint3 id : SV_DispatchThreadID)
+{
+	uint idx = NumBodies - 1;
+	float dt = deltaTime;
+
+	//position[idx] = CoM();
+
+	float3 old_acc = get_acc_grav_galaxy(idx);
+	position[idx] += velocity[idx]*dt + 0.5*old_acc*dt*dt;
+	float3 new_acc = get_acc_grav_galaxy(idx);
+	velocity[idx] += 0.5*(old_acc + new_acc)*dt;
+
 }

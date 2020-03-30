@@ -74,7 +74,7 @@ public class MouseOrbitImproved : MonoBehaviour {
 
  
  			//distance
- 			if (Input.GetAxis("Mouse ScrollWheel") != 0){
+ 			if (Input.GetAxis("Mouse ScrollWheel") != 0 && !EventSystem.current.IsPointerOverGameObject ()){
  				dz = Input.GetAxis("Mouse ScrollWheel");
  			} else {
  				dz *= (1.0f - friction);

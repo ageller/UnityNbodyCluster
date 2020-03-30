@@ -5,8 +5,8 @@ using UnityEngine.SceneManagement;
 
 public class ButtonController : MonoBehaviour {
 
-	private bool started = false;
-	private bool paused = false;
+	public bool started = false;
+	public bool paused = true;
 
 	void Start(){
 		Time.timeScale = 0;
@@ -33,11 +33,12 @@ public class ButtonController : MonoBehaviour {
 		} else {
 			//Debug.Log("starting game...");
 			started = true;
+			paused = false;
 			Time.timeScale = 1;
 			GameObject.Find("StartButton").GetComponentInChildren<Text>().text = "Pause";
 
 			//do something here
-
+			//disable the initial condition sliders
 		}
 	}
 

@@ -10,9 +10,10 @@ public class NbodyRenderer : MonoBehaviour {
 	public Texture colormap;
 	public float minSize = 0.02f;
 	public float maxSize = 0.5f;
-	public float BHSize = 0.1f;
-	public float NSSize = 0.1f;
-	public float WDSize = 0.1f;
+	public float BHSize = 1.0f;
+	public float NSSize = 1.0f;
+	public float WDSize = 1.0f;
+	public float NmlSize = 1.0f;
 
 	Matrix4x4[][] transformList;
 	int[] instances;
@@ -28,12 +29,23 @@ public class NbodyRenderer : MonoBehaviour {
 
 	private Transform CameraTarget;
 
-    public void BHSizeReceiver(float val){
-        BHSize = val;
-    }
+	public void BHSizeReceiver(float val){
+		BHSize = Mathf.Pow(10.0f,val);
+	}
+	public void NSSizeReceiver(float val){
+		NSSize = Mathf.Pow(10.0f,val);
+	}
+	public void WDSizeReceiver(float val){
+		WDSize = Mathf.Pow(10.0f,val);
+	}
+	public void NmlSizeReceiver(float val){
+		NmlSize = Mathf.Pow(10.0f,val);
+	}
 
 	// Use this for initialization
 	void Start () {
+
+
 		CameraTarget = GameObject.Find("CameraController").GetComponent<MouseOrbitImproved>().target;
 
 		NbodyCompute nb = GetComponent<Transform>().gameObject.GetComponent<NbodyCompute>();
@@ -91,6 +103,7 @@ public class NbodyRenderer : MonoBehaviour {
 				//matrix.SetTRS(Vector3.zero, Quaternion.Euler(Vector3.zero), Vector3.one);
 				//THIS SETTING IN VERY IMPORTANT.  Instancing will only be active (and therefore the object will only be drawn) when the first Vector3 is within the camera's view.  For instance, if it is set to Vector3.zero, the Nbody particles will only be drawn when the scene's origin is in view of the camera!
 				matrix.SetTRS(CameraTarget.position, Quaternion.Euler(Vector3.zero), Vector3.one);
+				//matrix.SetTRS(Vector3.zero, Quaternion.Euler(Vector3.zero), Vector3.one);
 				transformList[set][i] = matrix;
 			}
 		}
@@ -107,6 +120,7 @@ public class NbodyRenderer : MonoBehaviour {
 			mpb.SetFloat("BHSize", BHSize);
 			mpb.SetFloat("NSSize", NSSize);
 			mpb.SetFloat("WDSize", WDSize);
+			mpb.SetFloat("NmlSize", NmlSize);
 			mpb.SetTexture("colormap", colormap);
 
 			for (int i = 0; i < instances[set]; i++)

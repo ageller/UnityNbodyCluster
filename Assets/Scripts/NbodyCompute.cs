@@ -22,10 +22,13 @@ public class NbodyCompute : MonoBehaviour {
 	public float tScale = 1.0f;//scaling for dt (if tScale = 1, then time step is in Myr)
 	public float neta = 0.5f;//neta for Reimer's mass loss
 	public float Zmet = 0.02f;//metalicity (0.02 is solar)
+	public float Rgc = 8500.0f; //parsecs, distance of cluster from center of galaxy
+	public float galMass = 1e11f; //solMass, mass of point-mass galaxy, mass inside Sun
 
 	public float Rhm = 2.0f;//pc, half-mass radius (for cluster integration only)
 
 	public static ComputeBuffer pos_buf;
+	public static ComputeBuffer posCoM_buf;
 	public static ComputeBuffer vel_buf;
 	public static ComputeBuffer mass_buf;
 	public static ComputeBuffer rad_buf;
@@ -33,18 +36,14 @@ public class NbodyCompute : MonoBehaviour {
 	public static ComputeBuffer tgb_buf;
 	public static ComputeBuffer lgb_buf;
 
-	private const float G = 0.0044985f; // pc3 / (Myr2 solMass)>
-	//private float G = 3.9251256e+8f; // solRad3 / (yr2 solMass)>
-	//private float G = 2942.2062175f; //solRad3 / (day2 solMass)>
-	private const float RSun = 2.2546101516841093e-08f; //in units of parsecs
-	//private float RSun = 0.001f; 
-	private const float pi = 3.141592653589793f;
-
 	private float dt;
 	private float time;
+	private float fmGal;
+	private float vesc;
 
 	public struct Particle{
 		public float[] pos_data;
+		public float[] posCoM_data;
 		public float[] vel_data;
 		public float[] mass_data;
 		public float[] rad_data;
@@ -62,6 +61,15 @@ public class NbodyCompute : MonoBehaviour {
 	private const int BLOCKSIZE = 128;
 	//private const int floatSize = 12;//sizeof(float); = 4, but that doesn't seem correct! gives errors
 	private const int floatSize = sizeof(float);// = 4, but that doesn't seem correct! gives errors
+
+	private CameraMover cameraMover;
+	private ButtonController bc;
+
+	public GameObject galaxyCenter;
+
+	public void tScaleReceiver(float val){
+		tScale = Mathf.Pow(10.0f,val);
+	}
 
 	float KTGmass(){
 		//Eq. 14 from Kroupa, Tout & Gilmore (1993)
@@ -224,9 +232,32 @@ public class NbodyCompute : MonoBehaviour {
 	// 	return 1.1f*Mathf.Pow(m, -0.3f)*(Mathf.Pow(L, 0.4f) + 0.383f*Mathf.Pow(L, 0.76f));
 	// }
 
+
+	// Use this for initialization or a circular orbit in the x-z plane
+	//probably don't need Mcl, unless the galaxy mass is very small
+	Vector3 CircularXY(float Mcl){
+		
+		//https://stackoverflow.com/questions/14845273/initial-velocity-vector-for-circular-orbit
+		Vector3 dir = new Vector3(Rgc, 0.0f, 0.0f);
+		Vector3 dirNorm = dir/dir.magnitude;//(dir.x + dir.y + dir.z);
+		float cosphi = dirNorm.x;
+		float sinphi = dirNorm.z;
+
+		float initV = Mathf.Sqrt(CONSTANTS.G*(galMass + Mcl)/dir.magnitude);
+		return new Vector3(-initV*sinphi, 0.0f, initV*cosphi); 
+
+
+	}
+
 	Particle initPlummer(Vector3 center, float Rhm, int N0, int Nf){
+		//For rendering, I need this to be in the cluster's center-of-mass frame, but how can I do that??
+		//then in the compute shader I need to have the galaxy orbiting 
+
+		int i;
+
 		Particle p;
 		p.pos_data = new float[NumBodies*3];
+		p.posCoM_data = new float[NumBodies*3];
 		p.vel_data = new float[NumBodies*3];
 		p.mass_data = new float[NumBodies*3];
 		p.rad_data = new float[NumBodies];
@@ -240,7 +271,7 @@ public class NbodyCompute : MonoBehaviour {
 		//first get all the masses from the IMF, and calculate the cluster mass
 		//also set the radii and luminosities
 		float Mcl = 0.0f;
-		for (int i = N0; i < Nf; i++){
+		for (i = N0; i < Nf; i++){
 			float m = KTGmass();
 			float r = MSRadFromMass(m);
 			float L = MSLumFromMass(m);
@@ -268,16 +299,20 @@ public class NbodyCompute : MonoBehaviour {
 			//if (m > 5) Debug.Log(m+" "+L+" "+t.times[0]+" "+t.times[1]+" "+t.times[2]+" "+t.times[3]);
 			//Debug.Log(m+" "+L+" "+p.tgb_data[i*4]+" "+p.tgb_data[i*4 + 1]+" "+p.tgb_data[i*4 + 2]+" "+p.tgb_data[i*4 + 3]);
 		}
+		Vector3 vcirc = CircularXY(Mcl);
 
 		Debug.Log("cluster mass = "+Mcl);
+		Debug.Log("cluster velocity = "+vcirc);
+		cameraMover.SendMessage("MclReceiver", Mcl);
+		fmGal = CONSTANTS.G*galMass/(Rgc*Rgc);
 
 		//now set the positions and velocities
-		for (int i = N0; i < Nf; i++){
+		for (i = N0; i < Nf; i++){
 			float X1 = Random.Range(0.0f, 1.0f);
 			float X2 = Random.Range(0.0f, 1.0f);
-			float X3 = Random.Range(0.0f, 2.0f*pi);
+			float X3 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
 			float X4 = Random.Range(0.0f, 1.0f);
-			float X5 = Random.Range(0.0f, 2.0f*pi);
+			float X5 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
 
 			//positions
 			//should I do anything to limit the number of stars that get placed very far from the center (since Plummer is infinite?)
@@ -290,8 +325,8 @@ public class NbodyCompute : MonoBehaviour {
 
 			//velocities
 			//It seems like there is a factor of 2 missing somewhere.  Using these velocities, the cluster always flies apart
-			float phi = -G*Mcl/rpl*Mathf.Pow(1.0f + Mathf.Pow(r/rpl, 2.0f), -0.5f);
-			float vesc = Mathf.Sqrt(-2.0f*phi);
+			float phi = -CONSTANTS.G*Mcl/rpl*Mathf.Pow(1.0f + Mathf.Pow(r/rpl, 2.0f), -0.5f);
+			vesc = Mathf.Sqrt(-2.0f*phi);
 			float v = psi*vesc*vScale;
 			float vz = (2.0f*X4 - 1.0f)*v;
 			float vxy = Mathf.Sqrt(v*v - vz*vz);
@@ -302,20 +337,39 @@ public class NbodyCompute : MonoBehaviour {
 			p.pos_data[i*3 + 1] = y + center.y;
 			p.pos_data[i*3 + 2] = z + center.z;
 
-			p.vel_data[i*3] = vx;
-			p.vel_data[i*3 + 1] = vy;
-			p.vel_data[i*3 + 2] = vz;
+			p.posCoM_data[i*3] = x;
+			p.posCoM_data[i*3 + 1] = y;
+			p.posCoM_data[i*3 + 2] = z;
+
+			p.vel_data[i*3] = vx + vcirc.x;
+			p.vel_data[i*3 + 1] = vy + vcirc.y;
+			p.vel_data[i*3 + 2] = vz + vcirc.z;
 			
 		}
+
+		//try this for the center of mass?
+		i = Nf - 1;
+		p.pos_data[i*3] = center.x;
+		p.pos_data[i*3 + 1] = center.y;
+		p.pos_data[i*3 + 2] = center.z;
+		p.vel_data[i*3] = vcirc.x;
+		p.vel_data[i*3 + 1] = vcirc.y;
+		p.vel_data[i*3 + 2] = vcirc.z;
+		p.mass_data[i*3] = Mcl; 
+		p.rad_data[i] = 0.0f; 
 
 		return p;
 	}
 	void Start () {
 
+		cameraMover = GameObject.Find("CameraCenter").GetComponent<CameraMover>();
+		bc = GameObject.Find("ButtonController").GetComponent<ButtonController>();
+
 		//initialize all the buffers
 		//something is strange about the amoutn of size needed here;
 		// with floatSize = 12, this works for 10k, 15k and 30k particles, but not 20k
 		pos_buf = new ComputeBuffer(NumBodies, 3*floatSize, ComputeBufferType.Default);
+		posCoM_buf = new ComputeBuffer(NumBodies, 3*floatSize, ComputeBufferType.Default);
 		vel_buf = new ComputeBuffer(NumBodies, 3*floatSize, ComputeBufferType.Default);
 		mass_buf = new ComputeBuffer(NumBodies, 3*floatSize, ComputeBufferType.Default); //mnow, m0, mcore (currently don't have mcore)
 		rad_buf = new ComputeBuffer(NumBodies, floatSize, ComputeBufferType.Default);
@@ -325,6 +379,7 @@ public class NbodyCompute : MonoBehaviour {
 
 		// These global buffers apply to every shader with these buffers defined.
 		Shader.SetGlobalBuffer(Shader.PropertyToID("position"), pos_buf);
+		Shader.SetGlobalBuffer(Shader.PropertyToID("positionCoM"), posCoM_buf);
 		Shader.SetGlobalBuffer(Shader.PropertyToID("velocity"), vel_buf);
 		Shader.SetGlobalBuffer(Shader.PropertyToID("mass"), mass_buf);
 		Shader.SetGlobalBuffer(Shader.PropertyToID("radius"), rad_buf);
@@ -334,10 +389,11 @@ public class NbodyCompute : MonoBehaviour {
 
 		//initialize the bodies
 		//Particle p = initSphere(Vector3.zero, Vector3.one*rScale, Vector3.one*vScale, 0, NumBodies);
-		Particle p = initPlummer(Vector3.zero, Rhm, 0, NumBodies);
+		Particle p = initPlummer(new Vector3(Rgc, 0.0f, 0.0f), Rhm, 0, NumBodies);
 		//Particle p =initSimple();
 
 		pos_buf.SetData(p.pos_data);
+		posCoM_buf.SetData(p.posCoM_data);
 		vel_buf.SetData(p.vel_data);
 		mass_buf.SetData(p.mass_data);
 		rad_buf.SetData(p.rad_data);
@@ -348,29 +404,38 @@ public class NbodyCompute : MonoBehaviour {
 	}
 	
 
+
 	// FixedUpdate is called many times per frame, Update is called once per frame
-	//void FixedUpdate () {
-		//shader.SetFloat("deltaTime", Time.fixedDeltaTime);
+	// void FixedUpdate () {
+	// 	if (!bc.paused)	Time.timeScale = tScale;
+	// 	dt = Time.fixedDeltaTime;
 	void Update () {
-		dt = Time.deltaTime*tScale;
-		time += Time.deltaTime*tScale;
+		//sending units of pc, MSun, Myr, but sizes in RSun
+		if (!bc.paused)	Time.timeScale = tScale;
+		dt = Time.deltaTime;
+		time += dt;//*tScale;
 		shader.SetFloat("deltaTime", dt);
 		shader.SetFloat("time", time);
 		shader.SetInt("NumBodies", NumBodies);
-		shader.SetFloat("Softening", Softening*RSun);
-		shader.SetFloat("G", G);
+		shader.SetFloat("Softening", Softening);
+		shader.SetFloat("G", CONSTANTS.G);
 		shader.SetFloat("dvelMax",dvelMax); 
 		shader.SetFloat("rcolFac",rcolFac); 
 		shader.SetFloat("restitution", restitution);
 		shader.SetFloat("neta", neta);
+		shader.SetFloat("fmGal", fmGal);
+
+		//Debug.Log(dt+" "+Time.timeScale+" "+bc.paused);
 
 		var numberOfGroups = Mathf.CeilToInt((float) NumBodies/BLOCKSIZE);
+		shader.Dispatch(shader.FindKernel("CoMCompute"), 1, 1, 1);
 		shader.Dispatch(shader.FindKernel("CSMain"), numberOfGroups, 1, 1);
 	}
 
 	void OnDestroy()
 	{
 		pos_buf.Dispose();
+		posCoM_buf.Dispose();
 		vel_buf.Dispose();
 		mass_buf.Dispose();
 		rad_buf.Dispose();
