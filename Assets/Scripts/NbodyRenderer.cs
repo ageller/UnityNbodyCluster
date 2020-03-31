@@ -46,7 +46,8 @@ public class NbodyRenderer : MonoBehaviour {
 	void Start () {
 
 
-		CameraTarget = GameObject.Find("CameraController").GetComponent<MouseOrbitImproved>().target;
+		//CameraTarget = GameObject.Find("CameraController").GetComponent<MouseOrbitImproved>().target;
+		CameraTarget = GameObject.Find("MainCamera").GetComponent<MouseOrbitImproved>().target;
 
 		NbodyCompute nb = GetComponent<Transform>().gameObject.GetComponent<NbodyCompute>();
 		NumBodies = nb.NumBodies;

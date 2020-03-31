@@ -388,7 +388,8 @@ void applyStellarEvolution(uint idx, float dt){
 			if (mass[idx].z < 0){
 				luminosity[idx] = -40.0;
 				mass[idx].z = mass[idx].x;
-				velocity[idx] *= 265.;// sigma for NS SNe kick from Hobbs
+				float3 vCoM = velocity[NumBodies - 1];
+				velocity[idx] = (velocity[idx] - vCoM)*265. + vCoM;// sigma for NS SNe kick from Hobbs
 			}  else {
 				//set render type
 				luminosity[idx] = -20.0;

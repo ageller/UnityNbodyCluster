@@ -9,7 +9,9 @@ public class GUITextDisplay : MonoBehaviour
 	float time = 0.0f;
 
 	void Start(){
-		camera = GameObject.Find("CameraController").GetComponent<MouseOrbitImproved>();
+		//camera = GameObject.Find("CameraController").GetComponent<MouseOrbitImproved>();
+		camera = GameObject.Find("MainCamera").GetComponent<MouseOrbitImproved>();
+
 	}
 
 	void Update(){

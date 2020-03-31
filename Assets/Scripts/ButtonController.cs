@@ -42,6 +42,7 @@ public class ButtonController : MonoBehaviour {
 			GameObject.Find("vScaleSlider").GetComponentInChildren<Slider>().interactable = false;
 			GameObject.Find("RhmSlider").GetComponentInChildren<Slider>().interactable = false;
 			GameObject.Find("NSlider").GetComponentInChildren<Slider>().interactable = false;
+			GameObject.Find("FractalSlider").GetComponentInChildren<Slider>().interactable = false;
 		}
 	}
 

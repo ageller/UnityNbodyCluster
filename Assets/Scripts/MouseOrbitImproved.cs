@@ -11,33 +11,38 @@ using System.Collections;
 public class MouseOrbitImproved : MonoBehaviour {
  
 	public Transform target;
-	public Camera camera;
+	public Transform panMover;
 
 	public float distance = 5.0f;
 	public float xSpeed = 2.5f;
 	public float ySpeed = 2.5f;
- 
+	public float panSpeed = 0.25f;
+
 	// public float yMinLimit = -20f;
 	// public float yMaxLimit = 80f;
  
-	public float distanceMin = 1f;
-	public float distanceMax = 1000f;
+	public float distanceMin = 0.001f;
+	public float distanceMax = 100000;
  
- 	public float friction = 0.15f;
+	public float friction = 0.15f;
 
 	private Rigidbody rigidbody;
- 
+	private Camera camera;
+
 	float x = 0.0f;
 	float y = 0.0f;
 	float dx = 0.0f;
 	float dy = 0.0f;
 	float dz = 0.0f;
+	float dxPan = 0.0f;
+	float dyPan = 0.0f;
+
 	//bool isHost = false;
 
 	// Use this for initialization
-	void Start () 
-	{
-
+	void Start (){
+		camera = GameObject.Find("MainCamera").GetComponent<Camera>();
+		
 		Vector3 angles = transform.eulerAngles;
 		x = angles.y;
 		y = angles.x;
@@ -45,23 +50,20 @@ public class MouseOrbitImproved : MonoBehaviour {
 		rigidbody = GetComponent<Rigidbody>();
  
 		// Make the rigid body not change rotation
-		if (rigidbody != null)
-		{
+		if (rigidbody != null){
 			rigidbody.freezeRotation = true;
 		}
+
 	}
  
-	void LateUpdate () 
-	{
+	void LateUpdate (){
 
-		if (target) 
-		{
+		if (target){
 			//x,y rotation
 			var mouseBtn = Input.GetMouseButton(0);
-			if (mouseBtn && !EventSystem.current.IsPointerOverGameObject ())
-			{
-				dx = Input.GetAxis("Mouse X") * xSpeed;
-				dy = Input.GetAxis("Mouse Y") * ySpeed;
+			if (mouseBtn && !EventSystem.current.IsPointerOverGameObject()){
+				dx = Input.GetAxis("Mouse X")*xSpeed;
+				dy = Input.GetAxis("Mouse Y")*ySpeed;
 
 			} else {
 				dx *= (1.0f - friction);
@@ -72,29 +74,27 @@ public class MouseOrbitImproved : MonoBehaviour {
 			//y = ClampAngle(y, yMinLimit, yMaxLimit);
 			Quaternion rotation = Quaternion.Euler(y, x, 0);
 
- 
- 			//distance
- 			if (Input.GetAxis("Mouse ScrollWheel") != 0 && !EventSystem.current.IsPointerOverGameObject ()){
- 				dz = Input.GetAxis("Mouse ScrollWheel");
- 			} else {
- 				dz *= (1.0f - friction);
- 			}
- 			//scale the rate by the distance
- 			float dScale = Mathf.Pow(1.0f + distance, 0.5f);
- 			distance = Mathf.Clamp(distance - dz*dScale, distanceMin, distanceMax);
+			//distance
+			if (Input.GetAxis("Mouse ScrollWheel") != 0 && !EventSystem.current.IsPointerOverGameObject ()){
+				dz = Input.GetAxis("Mouse ScrollWheel");
+			} else {
+				dz *= (1.0f - friction);
+			}
+			//scale the rate by the distance
+			float dScale = Mathf.Pow(1.0f + distance, 0.5f);
+			distance = Mathf.Clamp(distance - dz*dScale, distanceMin, distanceMax);
 
 			RaycastHit hit;
-			if (Physics.Linecast (target.position, transform.position, out hit)) 
-			{
+			if (Physics.Linecast (target.position, transform.position, out hit)){
 				//do something in here when another object is in front of the camera?
 				//distance -=  hit.distance;
 			}
 			Vector3 negDistance = new Vector3(0.0f, 0.0f, -distance);
- 			Vector3 position = rotation * negDistance + target.position;
+			Vector3 position = rotation*negDistance + target.position;
 
- 			//apply transformations
+			//apply transformations
 			camera.transform.rotation = rotation;
-			camera.transform.position = position;
+			camera.transform.position = position + panMover.position;
 
 		}
 

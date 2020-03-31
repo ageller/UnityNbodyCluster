@@ -83,17 +83,17 @@ public class NbodyCompute : MonoBehaviour {
 		Random.state = state;
 		doInit();
 	}
-	public void RhmReceiver(int val){
+	public void RhmReceiver(float val){
 		Rhm = val;
 		Random.state = state;
 		doInit();
 	}
-	public void vScaleReceiver(int val){
+	public void vScaleReceiver(float val){
 		vScale = val;
 		Random.state = state;
 		doInit();
 	}
-	public void DFractalReceiver(int val){
+	public void DFractalReceiver(float val){
 		DFractal = val;
 		Random.state = state;
 		if (DFractal < 3.0f){
@@ -447,7 +447,8 @@ public class NbodyCompute : MonoBehaviour {
 		int Ntot = (int)Mathf.Round(128.0f*Mathf.Pow(8f,Mathf.Ceil(Mathf.Log(NumBodies)/Mathf.Log(8f))));
 		int Ntotorg = Ntot;
 		float l = 2.0f;
-		float prob = Mathf.Pow(2.0f, DFractal-3.0f);
+		float prob = Mathf.Pow(2.0f, DFractal - 3.0f);
+		Debug.Log("D "+DFractal+" "+prob);
 		float scatter = 0.1f;
 		if (radial) scatter = 0.01f; 
 		float vx = 0.0f;
