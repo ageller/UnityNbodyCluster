@@ -39,6 +39,9 @@ public class ButtonController : MonoBehaviour {
 
 			//do something here
 			//disable the initial condition sliders
+			GameObject.Find("vScaleSlider").GetComponentInChildren<Slider>().interactable = false;
+			GameObject.Find("RhmSlider").GetComponentInChildren<Slider>().interactable = false;
+			GameObject.Find("NSlider").GetComponentInChildren<Slider>().interactable = false;
 		}
 	}
 

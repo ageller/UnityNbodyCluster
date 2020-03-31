@@ -102,6 +102,7 @@ Shader "Custom/Star"
 				float4 viewDir = float4(v.vertex.x, v.vertex.y, 0.0, 0.0);  
 
 				//scaling, if desired
+				o.rad = radius[instancePos + offset];
 				float rad = 1.;
 				if (luminosity[instancePos + offset] > 0.) {
 					rad = clamp(log(radius[instancePos + offset])*_Scale, minSize, maxSize)*NmlSize;
@@ -137,7 +138,6 @@ Shader "Custom/Star"
 				}
 
 
-				o.rad = rad;
 				
 				//float rad = 1.0;
 				float4 scale = float4(rad, rad, 1.0, 1.0); 
@@ -158,7 +158,10 @@ Shader "Custom/Star"
 			fixed4 frag(v2f i) : SV_Target
 			{
 				UNITY_SETUP_INSTANCE_ID(i);
-				if (i.rad <= 0.) discard;
+				if (i.rad <= 0.) {
+					discard;
+					return float4(0.,0.,0.,0.);
+				}
 
 				float dist = distance(i.vertex, float4(0.0, 0.0, 0.0, 0.0))/sqrt(2.0);
 

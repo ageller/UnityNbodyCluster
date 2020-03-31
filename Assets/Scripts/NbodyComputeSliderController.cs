@@ -14,7 +14,14 @@ public class NbodyComputeSliderController : MonoBehaviour {
 	void Awake(){
 		compute = GameObject.Find("NbodyCompute").GetComponent<NbodyCompute>();
 		slider = GetComponent<Slider>();
-		value = Mathf.Log10((float)compute.GetType().GetField(Name).GetValue(compute));
+		//can I make this more general??
+		if (Name == "NumBodies"){
+			value = (int)compute.GetType().GetField(Name).GetValue(compute);
+		} else if (Name == "tScale") {
+			value = Mathf.Log10((float)compute.GetType().GetField(Name).GetValue(compute));
+		} else {
+			value = (float)compute.GetType().GetField(Name).GetValue(compute);
+		}
 		slider.value = value;
 
 	}
@@ -23,6 +30,7 @@ public class NbodyComputeSliderController : MonoBehaviour {
 
 		if (slider.value != value) {
 			value = slider.value;
+			Debug.Log(Name+" "+value);
 			compute.SendMessage(Name+"Receiver", value);
 
 		}
