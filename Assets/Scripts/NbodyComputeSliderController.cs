@@ -30,7 +30,7 @@ public class NbodyComputeSliderController : MonoBehaviour {
 
 		if (slider.value != value) {
 			value = slider.value;
-			Debug.Log(Name+" "+value);
+			//Debug.Log(Name+" "+value);
 			compute.SendMessage(Name+"Receiver", value);
 
 		}

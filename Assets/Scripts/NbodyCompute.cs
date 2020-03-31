@@ -26,6 +26,7 @@ public class NbodyCompute : MonoBehaviour {
 	public float Rgc = 8500.0f; //parsecs, distance of cluster from center of galaxy
 	public float galMass = 1e11f; //solMass, mass of point-mass galaxy, mass inside Sun
 	public float Rhm = 2.0f;//pc, half-mass radius (for cluster integration only)
+	public float DFractal = 3.0f;// fractal dimension =3.0 unfractal, =2.6 2/8 fractal, =2.0 4/8 fractal, =1.6 6/8 fractal, (2^D children per parent, following Goodwin & Whitworth 2004);
 
 	public static ComputeBuffer pos_buf;
 	public static ComputeBuffer posCoM_buf;
@@ -54,6 +55,8 @@ public class NbodyCompute : MonoBehaviour {
 		public float[] lgb_data;
 		public float Mcl;
 	}
+
+	public float[,] FractalStar;
 
 	public Cluster cls;
 	public Cluster cls0;
@@ -90,6 +93,15 @@ public class NbodyCompute : MonoBehaviour {
 		Random.state = state;
 		doInit();
 	}
+	public void DFractalReceiver(int val){
+		DFractal = val;
+		Random.state = state;
+		if (DFractal < 3.0f){
+			Fractalize();
+		}
+		doInit();
+	}
+
 	public void doInit(){
 		resetStars(NumBodies);
 		clearStars(NumBodies);
@@ -297,6 +309,9 @@ public class NbodyCompute : MonoBehaviour {
 		cls0.tgb_data = new float[N*4];
 		cls0.lgb_data = new float[N*4];
 		cls0.Mcl = 0.0f;
+
+		FractalStar = new float[N, 7];
+
 	}
 	void clearStars(int N){
 		//set these all to zero
@@ -317,8 +332,13 @@ public class NbodyCompute : MonoBehaviour {
 			cls.lgb_data[i*4 + 1] = 1.0f; //lbHe
 			cls.lgb_data[i*4 + 2] = 1.0f; //lbAGB,
 			cls.lgb_data[i*4 + 3] =  1.0f; //lrem (=0 for now)
+
+			for (int j = 0; j < 7; j++) FractalStar[i,j] = 1.0f;
+
 		}
+
 	}
+
 	void resetStars(int N){
 		cls.Mcl = 0.0f;
 		for (int i = 0; i < N; i++){
@@ -391,38 +411,425 @@ public class NbodyCompute : MonoBehaviour {
 
 	}
 
+	//converted from McCluster by Andreas Kupper
+	//forcing spherical symmetry, and setting to "radial"
+	float drand48(){
+		//to simplify the conversion
+		return Random.Range(0.0f, 1.0f);
+	}
+	float get_gauss(){
+		float[] random = new float[2];
+		float p, q;
+		q = 2.0f;
+		while (q > 1.0f){
+			random[0] = 2.0f*drand48()-1.0f; 
+			random[1] = 2.0f*drand48()-1.0f; 
+			q = random[0]*random[0]+random[1]*random[1];
+		}
+		
+		p = Mathf.Sqrt(-2.0f*Mathf.Log(q)/q);
+		return random[0]*p;
+		
+	}
 
-	void initPlummer(int N){
+	void Fractalize(){
+	
+		int N = NumBodies;
+
+		bool radial = true;
+		bool symmetry = true;
+
+		int i = 0;
+		int j = 0;
+		int h = 0;
+		int Nparent = 0;
+		int Nparentlow = 0;
+		int Ntot = (int)Mathf.Round(128.0f*Mathf.Pow(8f,Mathf.Ceil(Mathf.Log(NumBodies)/Mathf.Log(8f))));
+		int Ntotorg = Ntot;
+		float l = 2.0f;
+		float prob = Mathf.Pow(2.0f, DFractal-3.0f);
+		float scatter = 0.1f;
+		if (radial) scatter = 0.01f; 
+		float vx = 0.0f;
+		float vy = 0.0f;
+		float vz = 0.0f;
+		float vscale = 0.0f;
+		int subi = 0;
+		float morescatter = 0.1f; //0.1 looks good
+
+
+		//temporary array for fractalized structure
+		float[,] star_temp = new float[Ntot, 7]; //not sure why he's using 7 when there are only 6 positions needed?
+
+		Nparent = 0; //ur-star
+		Nparentlow = Nparent;
+		star_temp[Nparent,1] = 0.0f;//x
+		star_temp[Nparent,2] = 0.0f;//y
+		star_temp[Nparent,3] = 0.0f;//z
+		star_temp[Nparent,4] = 0.0f;//vx
+		star_temp[Nparent,5] = 0.0f;//vy
+		star_temp[Nparent,6] = 0.0f;//vz
+		Nparent++;
+		
+		
+		while (Nparent+i*8<Ntot) {
+			l /= 2.0f;
+			i = 0;
+			for (;Nparentlow<Nparent;Nparentlow++) {
+				subi = 0;
+
+				if ((drand48()<prob && Nparent+i<Ntot) || ((Nparent == 1) && (symmetry))) {
+					star_temp[Nparent+i,0] = 1.0f;
+					star_temp[Nparent+i,1] = star_temp[Nparentlow,1] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,2] = star_temp[Nparentlow,2] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,3] = star_temp[Nparentlow,3] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,4] = get_gauss();
+					star_temp[Nparent+i,5] = get_gauss();
+					star_temp[Nparent+i,6] = get_gauss();
+					i++;
+					subi++;
+				}
+				if ((drand48()<prob && Nparent+i<Ntot) || ((Nparent == 1) && (symmetry))) {
+					star_temp[Nparent+i,0] = 1.0f;
+					star_temp[Nparent+i,1] = star_temp[Nparentlow,1] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,2] = star_temp[Nparentlow,2] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,3] = star_temp[Nparentlow,3] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,4] = get_gauss();
+					star_temp[Nparent+i,5] = get_gauss();
+					star_temp[Nparent+i,6] = get_gauss();
+					i++;
+					subi++;
+				}
+				if ((drand48()<prob && Nparent+i<Ntot) || ((Nparent == 1) && (symmetry))) {
+					star_temp[Nparent+i,0] = 1.0f;
+					star_temp[Nparent+i,1] = star_temp[Nparentlow,1] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,2] = star_temp[Nparentlow,2] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,3] = star_temp[Nparentlow,3] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,4] = get_gauss();
+					star_temp[Nparent+i,5] = get_gauss();
+					star_temp[Nparent+i,6] = get_gauss();
+					i++;
+					subi++;
+				}
+				if ((drand48()<prob && Nparent+i<Ntot) || ((Nparent == 1) && (symmetry))) {
+					star_temp[Nparent+i,0] = 1.0f;
+					star_temp[Nparent+i,1] = star_temp[Nparentlow,1] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,2] = star_temp[Nparentlow,2] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,3] = star_temp[Nparentlow,3] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,4] = get_gauss();
+					star_temp[Nparent+i,5] = get_gauss();
+					star_temp[Nparent+i,6] = get_gauss();
+					i++;
+					subi++;
+				}
+				if ((drand48()<prob && Nparent+i<Ntot) || ((Nparent == 1) && (symmetry))) {
+					star_temp[Nparent+i,0] = 1.0f;
+					star_temp[Nparent+i,1] = star_temp[Nparentlow,1] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,2] = star_temp[Nparentlow,2] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,3] = star_temp[Nparentlow,3] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,4] = get_gauss();
+					star_temp[Nparent+i,5] = get_gauss();
+					star_temp[Nparent+i,6] = get_gauss();
+					i++;
+					subi++;
+				}
+				if ((drand48()<prob && Nparent+i<Ntot) || ((Nparent == 1) && (symmetry))) {
+					star_temp[Nparent+i,0] = 1.0f;
+					star_temp[Nparent+i,1] = star_temp[Nparentlow,1] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,2] = star_temp[Nparentlow,2] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,3] = star_temp[Nparentlow,3] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,4] = get_gauss();
+					star_temp[Nparent+i,5] = get_gauss();
+					star_temp[Nparent+i,6] = get_gauss();
+					i++;
+					subi++;
+				}
+				if ((drand48()<prob && Nparent+i<Ntot) || ((Nparent == 1) && (symmetry))) {
+					star_temp[Nparent+i,0] = 1.0f;
+					star_temp[Nparent+i,1] = star_temp[Nparentlow,1] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,2] = star_temp[Nparentlow,2] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,3] = star_temp[Nparentlow,3] + l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,4] = get_gauss();
+					star_temp[Nparent+i,5] = get_gauss();
+					star_temp[Nparent+i,6] = get_gauss();
+					i++;
+					subi++;
+				}
+				if ((drand48()<prob && Nparent+i<Ntot) || ((Nparent == 1) && (symmetry))) {
+					star_temp[Nparent+i,0] = 1.0f;
+					star_temp[Nparent+i,1] = star_temp[Nparentlow,1] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,2] = star_temp[Nparentlow,2] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,3] = star_temp[Nparentlow,3] - l/2.0f + l*scatter*get_gauss();
+					star_temp[Nparent+i,4] = get_gauss();
+					star_temp[Nparent+i,5] = get_gauss();
+					star_temp[Nparent+i,6] = get_gauss();
+					i++;
+					subi++;
+				}
+				
+				//re-scaling of sub-group
+				if (subi != 0) {
+					vx = 0.0f; vy = 0.0f; vz = 0.0f;
+					vscale = 0.0f;
+					for (j=Nparent+i-subi;j<Nparent+i;j++) {
+						vx += star_temp[j,4];
+						vy += star_temp[j,5];
+						vz += star_temp[j,6];
+					}
+					vx /= 1.0f*subi;
+					vy /= 1.0f*subi;
+					vz /= 1.0f*subi;
+					for (j=Nparent+i-subi;j<Nparent+i;j++) {
+						star_temp[j,4] -= vx;
+						star_temp[j,5] -= vy;
+						star_temp[j,6] -= vz;					
+					}
+					if (subi-1 != 0) {
+						for (j=Nparent+i-subi;j<Nparent+i;j++) {
+							vscale += star_temp[j,4]*star_temp[j,4]+star_temp[j,5]*star_temp[j,5]+star_temp[j,6]*star_temp[j,6];
+						}
+						vscale = Mathf.Sqrt(vscale/(subi-1));
+					} else {
+						vscale = 1.0f;
+					}
+					for (j=Nparent+i-subi;j<Nparent+i;j++) {
+						star_temp[j,4] = star_temp[j,4]/vscale + star_temp[Nparentlow,4]; //add bulk velocity of parent
+						star_temp[j,5] = star_temp[j,5]/vscale + star_temp[Nparentlow,5];
+						star_temp[j,6] = star_temp[j,6]/vscale + star_temp[Nparentlow,6];
+					}				
+				}
+				
+			}
+			Nparent+=i;
+		}
+		Ntot = Nparent;
+
+		float[] cmr = new float[7];//centre-of-mass correction
+		for (j=0; j<7; j++) cmr[j] = 0.0f;
+		
+		for (j=0; j<Ntot; j++) {
+			for (i=1;i<7;i++) 
+				cmr[i] += star_temp[j,i]; 
+		} 
+		
+		for (j=0; j<Ntot; j++) {
+			for (i=1;i<7;i++)
+				star_temp[j,i] -= cmr[i]/Ntot;
+		}
+			
+		i = 0;//randomly select stars from sample with r < 1.0
+		for (i=0; i<N; i++) {
+			do{ 
+				j = (int)Mathf.Round(drand48()*Ntot);
+			} while (star_temp[j,0] == 0.0f || (Mathf.Sqrt(Mathf.Pow(star_temp[j,1],2)+Mathf.Pow(star_temp[j,2],2)+Mathf.Pow(star_temp[j,3],2)) > 1.0)); 
+			for (h=1;h<7;h++) FractalStar[i,h] = star_temp[j,h];
+			star_temp[j,0] = 0.0f;
+		}
+
+		float r, r_norm;
+		float vnorm = 0.0f;
+		float[] start = new float[4];
+		if (radial) {
+			for (i=0;i<N;i++) {
+				vnorm += Mathf.Sqrt(Mathf.Pow(FractalStar[i,4],2)+Mathf.Pow(FractalStar[i,5],2)+Mathf.Pow(FractalStar[i,6],2));
+			}
+			vnorm /= N;
+			//this for loop was not in McCluster... but it raises an error here because i = N (and the star array is only of size N)
+			//I added the loop, which I think makes sense?
+			for (i=0;i<N;i++) {
+				for (h=4;h<7;h++) FractalStar[i,h] /= 0.5f*vnorm;
+			}
+			
+			for (i=0;i<N;i++) {
+				r = Mathf.Sqrt(Mathf.Pow(FractalStar[i,1],2)+Mathf.Pow(FractalStar[i,2],2)+Mathf.Pow(FractalStar[i,3],2));
+				r_norm = Mathf.Pow(r,3);
+				do{ 
+					for (h=1;h<4;h++) start[h] = FractalStar[i,h]*r_norm/r + Mathf.Pow(r_norm/r,3)*morescatter*get_gauss();
+				} while (Mathf.Sqrt(Mathf.Pow(start[1],2)+Mathf.Pow(start[2],2)+Mathf.Pow(start[3],2))>1.0);
+				for (h=1;h<4;h++) FractalStar[i,h] = start[h];
+			}
+		}
+		//for (j=0;j<Ntotorg;j++) free (star_temp[j]);
+		//free(star_temp);
+				
+	}
+
+	void initUnscaledPlummer(int N){
 		//For rendering, I need this to be in the cluster's center-of-mass frame, but how can I do that??
 		//then in the compute shader I need to have the galaxy orbiting 
+
+		int i;
+
+		float rpl = 1.0f;
+
+		//now set the positions and velocities
+		for (i = 0; i < N; i++){
+
+			//positions
+			float X1 = Random.Range(0.0f, 1.0f);
+			float psi = Mathf.Pow(Mathf.Pow(X1, -2.0f/3.0f) - 1.0f, -0.5f);
+			float r = psi*rpl;
+
+			float X2 = Random.Range(0.0f, 1.0f);
+			float X3 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
+			float z = (2.0f*X2 - 1.0f)*r;
+			float xy = Mathf.Sqrt(r*r - z*z);
+			float x = xy*Mathf.Cos(X3);
+			float y = xy*Mathf.Sin(X3);
+
+			cls0.pos_data[i*3] = x ;
+			cls0.pos_data[i*3 + 1] = y;
+			cls0.pos_data[i*3 + 2] = z;
+
+			cls0.posCoM_data[i*3] = x;
+			cls0.posCoM_data[i*3 + 1] = y;
+			cls0.posCoM_data[i*3 + 2] = z;
+
+			//not sure I can give unscaled velocities?
+			cls0.vel_data[i*3] = 0.0f;
+			cls0.vel_data[i*3 + 1] = 0.0f;
+			cls0.vel_data[i*3 + 2] = 0.0f;
+			
+		}
+
+	}
+	
+	void initPlummer(int N){
+		//this assumes that an unscaled plummer position array is available in cls0
 
 		int i;
 
 		Vector3 center = new Vector3(Rgc, 0.0f, 0.0f);
 		float rpl = Rhm*Mathf.Sqrt(Mathf.Pow(2.0f, 2.0f/3.0f) -1.0f);
 		Vector3 vcirc = CircularXY(cls.Mcl);
+		//from McCluster
+		float Rtide = Mathf.Pow(1.0f*cls.Mcl/(3.0f*galMass), 1.0f/3.0f)*Rgc;
 		fmGal = CONSTANTS.G*galMass/(Rgc*Rgc);
 
-		Debug.Log("cluster mass, velocity, Rhm, vscale = "+cls.Mcl+" "+vcirc+" "+Rhm+" "+vScale);
-
+		Debug.Log("cluster mass, velocity, Rhm, rtide, vscale = "+cls.Mcl+" "+vcirc+" "+Rhm+" "+Rtide+" "+vScale);
 
 		//now set the positions and velocities
 		for (i = 0; i < N; i++){
-			float X1 = Random.Range(0.0f, 1.0f);
-			float X2 = Random.Range(0.0f, 1.0f);
-			float X3 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
-			float X4 = Random.Range(0.0f, 1.0f);
-			float X5 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
 
 			//positions
-			//should I do anything to limit the number of stars that get placed very far from the center (since Plummer is infinite?)
+
+			float x = cls0.pos_data[i*3]*rpl;
+			float y = cls0.pos_data[i*3 + 1]*rpl;
+			float z = cls0.pos_data[i*3 + 2]*rpl;
+			if (DFractal < 3){
+				//apply the fractal pattern?, not sure how to scale this properly
+				x = FractalStar[i,1]*rpl;
+				y = FractalStar[i,2]*rpl;
+				z = FractalStar[i,3]*rpl;
+			}
+			float r = Mathf.Sqrt(x*x + y*y + z*z);
+			float psi = r/rpl;
+
+			//limit by approximate tidal radius (this will place them in the Plummer profile even if Fractal is desired...)
+			if (r > Rtide){
+				while (r > Rtide){
+					float X1 = Random.Range(0.0f, 1.0f);
+					psi = Mathf.Pow(Mathf.Pow(X1, -2.0f/3.0f) - 1.0f, -0.5f);
+					r = psi*rpl;
+				}
+
+				float X2 = Random.Range(0.0f, 1.0f);
+				float X3 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
+				z = (2.0f*X2 - 1.0f)*r;
+				float xy = Mathf.Sqrt(r*r - z*z);
+				x = xy*Mathf.Cos(X3);
+				y = xy*Mathf.Sin(X3);
+			}
+
+
+
+
+			cls.pos_data[i*3] = x + center.x;
+			cls.pos_data[i*3 + 1] = y + center.y;
+			cls.pos_data[i*3 + 2] = z + center.z;
+
+			cls.posCoM_data[i*3] = x;
+			cls.posCoM_data[i*3 + 1] = y;
+			cls.posCoM_data[i*3 + 2] = z;
+
+			//velocities
+			float X4 = Random.Range(0.0f, 1.0f);
+			float X5 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
+			//velocities
+			//It seems like there is a factor of 2 missing somewhere.  Using these velocities, the cluster always flies apart
+			float phi = -CONSTANTS.G*cls.Mcl/rpl*Mathf.Pow(1.0f + Mathf.Pow(r/rpl, 2.0f), -0.5f);
+			vesc = Mathf.Sqrt(-2.0f*phi);
+			float v = psi*vesc*vScale*0.5f; //added factor of 0.5 here, not sure it's correct, but it seems needed to avoid collapse
+			float vz = (2.0f*X4 - 1.0f)*v;
+			float vxy = Mathf.Sqrt(v*v - vz*vz);
+			float vx = vxy*Mathf.Cos(X5);
+			float vy = vxy*Mathf.Sin(X5);
+
+			//I don't think there's anything special about the velocities in Fractalize (rigtht?)
+			// if (DFractal < 3){
+			// 	//apply the fractal pattern?, not sure how to scale this properly
+			// 	vx = FractalStar[i,4];
+			// 	vy = FractalStar[i,5];
+			// 	vz = FractalStar[i,6];
+			// }
+			cls.vel_data[i*3] = vx + vcirc.x;
+			cls.vel_data[i*3 + 1] = vy + vcirc.y;
+			cls.vel_data[i*3 + 2] = vz + vcirc.z;
+			
+		}
+
+
+
+		//try this for the center of mass calculation?
+		i = N - 1;
+		cls.pos_data[i*3] = center.x;
+		cls.pos_data[i*3 + 1] = center.y;
+		cls.pos_data[i*3 + 2] = center.z;
+		cls.vel_data[i*3] = vcirc.x;
+		cls.vel_data[i*3 + 1] = vcirc.y;
+		cls.vel_data[i*3 + 2] = vcirc.z;
+		cls.mass_data[i*3] = cls.Mcl; 
+		cls.rad_data[i] = 0.0f; 
+
+	}
+
+	void initPlummerOrg(int N){
+		//doesn't require a precomputed Plummer position array
+
+		int i;
+
+		Vector3 center = new Vector3(Rgc, 0.0f, 0.0f);
+		float rpl = Rhm*Mathf.Sqrt(Mathf.Pow(2.0f, 2.0f/3.0f) -1.0f);
+		Vector3 vcirc = CircularXY(cls.Mcl);
+		//from McCluster
+		float Rtide = Mathf.Pow(1.0f*cls.Mcl/(3.0f*galMass), 1.0f/3.0f)*Rgc;
+		fmGal = CONSTANTS.G*galMass/(Rgc*Rgc);
+
+		Debug.Log("cluster mass, velocity, Rhm, rtide, vscale = "+cls.Mcl+" "+vcirc+" "+Rhm+" "+Rtide+" "+vScale);
+
+		//now set the positions and velocities
+		for (i = 0; i < N; i++){
+
+			//positions
+			float X1 = Random.Range(0.0f, 1.0f);
 			float psi = Mathf.Pow(Mathf.Pow(X1, -2.0f/3.0f) - 1.0f, -0.5f);
 			float r = psi*rpl;
+			//limit by approximate tidal radius, but this breaks the re-randomizes the positions
+			// while (r > Rtide){
+			// 	X1 = Random.Range(0.0f, 1.0f);
+			// 	psi = Mathf.Pow(Mathf.Pow(X1, -2.0f/3.0f) - 1.0f, -0.5f);
+			// 	r = psi*rpl;
+			// }
+
+			float X2 = Random.Range(0.0f, 1.0f);
+			float X3 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
 			float z = (2.0f*X2 - 1.0f)*r;
 			float xy = Mathf.Sqrt(r*r - z*z);
 			float x = xy*Mathf.Cos(X3);
 			float y = xy*Mathf.Sin(X3);
 
+			float X4 = Random.Range(0.0f, 1.0f);
+			float X5 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
 			//velocities
 			//It seems like there is a factor of 2 missing somewhere.  Using these velocities, the cluster always flies apart
 			float phi = -CONSTANTS.G*cls.Mcl/rpl*Mathf.Pow(1.0f + Mathf.Pow(r/rpl, 2.0f), -0.5f);
@@ -447,6 +854,8 @@ public class NbodyCompute : MonoBehaviour {
 			
 		}
 
+
+
 		//try this for the center of mass calculation?
 		i = N - 1;
 		cls.pos_data[i*3] = center.x;
@@ -459,7 +868,6 @@ public class NbodyCompute : MonoBehaviour {
 		cls.rad_data[i] = 0.0f; 
 
 	}
-
 	void InitBuffers(int N){
 		//Random.seed = seed;
 
@@ -520,8 +928,15 @@ public class NbodyCompute : MonoBehaviour {
 		InitBuffers(NumBodiesMax);
 		InitStruct(NumBodiesMax);
 
-		//to save the initial state
 		initStars(NumBodiesMax); //masses, radii, and other SEV items
+		initUnscaledPlummer(NumBodiesMax);
+
+		//apply the fractal structure?
+		if (DFractal < 3.0f){
+			Fractalize();
+		}
+
+		//to save the initial state
 		state = Random.state; //for some reason this still looks slightly different than after using the sliders once??
 
 		//this will copy from the initial state, and then (re)do the Plummer positions and velocities, and set the Shader data

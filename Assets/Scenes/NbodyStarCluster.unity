@@ -4130,6 +4130,7 @@ MonoBehaviour:
   Rgc: 8500
   galMass: 1e+11
   Rhm: 4
+  DFractal: 1
   galaxyCenter: {fileID: 1230862586}
 --- !u!4 &1794161236
 Transform:
