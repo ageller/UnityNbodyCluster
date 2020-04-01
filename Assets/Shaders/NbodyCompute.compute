@@ -26,9 +26,6 @@ uniform float neta; //Reimer's mass loss coefficient
 uniform float deltaTime; //time elapsed since last frame (dt)
 uniform float time; //total elapsed time
 
-//external point mass galaxy G*M/Rgc**2
-uniform float fmGal;
-
 //only relevant if we want collisions enabled
 uniform float dvelMax; //max velocity for inelastic collision with recoil (otherwise merge bodies)
 uniform float rcolFac; //radius scaling for collision detection
@@ -54,6 +51,35 @@ float MSRadFromMass(float m){
 	return pow(m, eta);
 }
 
+//this should be the identical function to NbodyCompute.cs
+float MWmass(float r){
+
+	//Navarro-Frenk-White dark-matter halo mass as a function of radius for galaxy
+	//https://en.wikipedia.org/wiki/Navarro%E2%80%93Frenk%E2%80%93White_profile
+	//taking these values from table 1 in this paper: https://arxiv.org/pdf/1304.5127.pdf
+	//https://ui.adsabs.harvard.edu/abs/2013JCAP...07..016N/abstract
+	float Rs = 16100.0;//pc Milky Way scale radius
+	float rho0 = 0.014;//Msun/pc**3. Milky Way scale density
+	//https://iopscience.iop.org/article/10.1086/589500/pdf
+	//https://ui.adsabs.harvard.edu/abs/2008ApJ...684.1143X/abstract
+	// float Rs = 22250.0f;//pc Milky Way scale radius
+	// float rho0 = 0.0042f ;//Msun/pc**3. Milky Way scale density	
+	float MNFW = 4.0*PI*rho0*pow(Rs,3.0)*(log((Rs + r)/Rs) - r/(Rs + r));
+
+	//assume simple spherical ball of constant density for bulge
+	float Mbulge = 1.5e10;//Msun
+	float Rbulge = 2000.0;//pc
+	float rhobulge = Mbulge/(4.0/3.0*PI*pow(Rbulge,3.0));
+	float MB = min(4.0/3.0*PI*pow(r, 3.0)*rhobulge, Mbulge);
+
+	//disk
+	//also see here: https://academic.oup.com/mnras/article/366/3/899/993295
+	float Rdisk = 3000.0;//pc
+	float Sdisk = 60.0/exp(-8000/Rdisk);//Msun/pc**2
+	float MD = 2.0*PI*Sdisk*Rdisk*Rdisk*(1.0 - (1.0 + r/Rdisk)*exp(-r/Rdisk));
+
+	return MNFW + MB + MD;
+}
 
 float mlwindReimers(float L, float R, float M){
 	//dmass/dt from winds from Reimer's equation (using eq. 106 in Hurley, Pols & Tout 2000, the SSE paper)
@@ -188,7 +214,9 @@ float3 get_acc_grav_galaxy(uint idx){
 	//acceleration from point-mass galaxy, assuming Mgal >> gal, and Rgc is constant (fmGal = G*Mgal/Rgc**2)
 	//float3 D = galPos - position[idx]; 
 	float3 D = -position[idx]; 
-	return fmGal*normalize(D);
+	float r = length(D);
+	float galMass = MWmass(r);
+	return G*galMass/(r*r)*normalize(D);
 }
 
 //Verlet leapfrog

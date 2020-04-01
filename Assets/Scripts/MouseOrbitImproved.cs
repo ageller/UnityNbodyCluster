@@ -34,8 +34,6 @@ public class MouseOrbitImproved : MonoBehaviour {
 	float dx = 0.0f;
 	float dy = 0.0f;
 	float dz = 0.0f;
-	float dxPan = 0.0f;
-	float dyPan = 0.0f;
 
 	//bool isHost = false;
 

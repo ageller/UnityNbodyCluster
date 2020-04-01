@@ -10,6 +10,13 @@ public class ButtonController : MonoBehaviour {
 
 	void Start(){
 		Time.timeScale = 0;
+
+		GameObject.Find("CameraCenter").GetComponent<TrailController>().enabled = false;
+		TrailRenderer tr = GameObject.Find("CameraCenter").GetComponent<TrailRenderer>();
+		tr.enabled = false;
+		tr.widthMultiplier = 0.0f;
+		tr.time = 0.0f;
+		tr.emitting = false;
 	}
 
 	public void StartButtonClicked(){
@@ -43,6 +50,12 @@ public class ButtonController : MonoBehaviour {
 			GameObject.Find("RhmSlider").GetComponentInChildren<Slider>().interactable = false;
 			GameObject.Find("NSlider").GetComponentInChildren<Slider>().interactable = false;
 			GameObject.Find("FractalSlider").GetComponentInChildren<Slider>().interactable = false;
+			GameObject.Find("RgcSlider").GetComponentInChildren<Slider>().interactable = false;
+
+			TrailRenderer tr = GameObject.Find("CameraCenter").GetComponent<TrailRenderer>();
+			GameObject.Find("CameraCenter").GetComponent<TrailController>().enabled = true;
+
+
 		}
 	}
 

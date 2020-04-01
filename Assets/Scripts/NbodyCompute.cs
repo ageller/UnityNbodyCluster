@@ -23,10 +23,11 @@ public class NbodyCompute : MonoBehaviour {
 	public float tScale = 1.0f;//scaling for dt (if tScale = 1, then time step is in Myr)
 	public float neta = 0.5f;//neta for Reimer's mass loss
 	public float Zmet = 0.02f;//metalicity (0.02 is solar)
-	public float Rgc = 8500.0f; //parsecs, distance of cluster from center of galaxy
-	public float galMass = 1e11f; //solMass, mass of point-mass galaxy, mass inside Sun
-	public float Rhm = 2.0f;//pc, half-mass radius (for cluster integration only)
+	public float Rgc = 8000.0f; //parsecs, distance of cluster from center of galaxy
+	public float ecc = 0.0f;//orbital eccentricity of galactic orbit (am I using this correctly?)
 	public float DFractal = 3.0f;// fractal dimension =3.0 unfractal, =2.6 2/8 fractal, =2.0 4/8 fractal, =1.6 6/8 fractal, (2^D children per parent, following Goodwin & Whitworth 2004);
+	//public float galMass = 1e11f; //solMass, mass of point-mass galaxy, mass inside Sun
+	public float Rhm = 2.0f;//pc, half-mass radius (for cluster integration only)
 
 	public static ComputeBuffer pos_buf;
 	public static ComputeBuffer posCoM_buf;
@@ -71,6 +72,7 @@ public class NbodyCompute : MonoBehaviour {
 	private const int floatSize = sizeof(float);// = 4, but that doesn't seem correct! gives errors
 
 	private CameraMover cameraMover;
+	private Transform cameraCenter;
 	private ButtonController bc;
 
 	public GameObject galaxyCenter;
@@ -101,7 +103,16 @@ public class NbodyCompute : MonoBehaviour {
 		}
 		doInit();
 	}
-
+	public void RgcReceiver(float val){
+		Rgc = val;
+		Random.state = state;
+		doInit();
+	}
+	public void eccReceiver(float val){
+		ecc = val;
+		Random.state = state;
+		doInit();
+	}
 	public void doInit(){
 		resetStars(NumBodies);
 		clearStars(NumBodies);
@@ -122,6 +133,35 @@ public class NbodyCompute : MonoBehaviour {
 		float X = Random.Range(0.0f, 1.0f);
 
 		return 0.08f + (c1*Mathf.Pow(X, c2) + c3*Mathf.Pow(X, c4))/Mathf.Pow(1.0f - X, 0.58f);
+	}
+
+	float MWmass(float r){
+
+		//Navarro-Frenk-White dark-matter halo mass as a function of radius for galaxy
+		//https://en.wikipedia.org/wiki/Navarro%E2%80%93Frenk%E2%80%93White_profile
+		//taking these values from table 1 in this paper: https://arxiv.org/pdf/1304.5127.pdf
+		//https://ui.adsabs.harvard.edu/abs/2013JCAP...07..016N/abstract
+		float Rs = 16100.0f;//pc Milky Way scale radius
+		float rho0 = 0.014f ;//Msun/pc**3. Milky Way scale density
+		//https://iopscience.iop.org/article/10.1086/589500/pdf
+		//https://ui.adsabs.harvard.edu/abs/2008ApJ...684.1143X/abstract
+		// float Rs = 22250.0f;//pc Milky Way scale radius
+		// float rho0 = 0.0042f ;//Msun/pc**3. Milky Way scale density	
+		float MNFW = 4.0f*CONSTANTS.pi*rho0*Mathf.Pow(Rs,3.0f)*(Mathf.Log((Rs + r)/Rs) - r/(Rs + r));
+
+		//assume simple spherical ball of constant density for bulge
+		float Mbulge = 1.5e10f;//Msun
+		float Rbulge = 2000.0f;//pc
+		float rhobulge = Mbulge/(4.0f/3.0f*CONSTANTS.pi*Mathf.Pow(Rbulge,3.0f));
+		float MB = Mathf.Min(4.0f/3.0f*CONSTANTS.pi*Mathf.Pow(r, 3.0f)*rhobulge, Mbulge);
+
+		//disk
+		//also see here: https://academic.oup.com/mnras/article/366/3/899/993295
+		float Rdisk = 3000.0f;//pc
+		float Sdisk = 60.0f/Mathf.Exp(-8000/Rdisk);//Msun/pc**2
+		float MD = 2.0f*CONSTANTS.pi*Sdisk*Rdisk*Rdisk*(1.0f - (1.0f + r/Rdisk)*Mathf.Exp(-r/Rdisk));
+
+		return MNFW + MB + MD;
 	}
 
 	float MSRadFromMass(float m){
@@ -282,7 +322,7 @@ public class NbodyCompute : MonoBehaviour {
 		Vector3 dirNorm = dir/dir.magnitude;//(dir.x + dir.y + dir.z);
 		float cosphi = dirNorm.x;
 		float sinphi = dirNorm.z;
-
+		float galMass = MWmass(Rgc);
 		float initV = Mathf.Sqrt(CONSTANTS.G*(galMass + Mcl)/dir.magnitude);
 		return new Vector3(-initV*sinphi, 0.0f, initV*cosphi); 
 
@@ -702,12 +742,12 @@ public class NbodyCompute : MonoBehaviour {
 
 		Vector3 center = new Vector3(Rgc, 0.0f, 0.0f);
 		float rpl = Rhm*Mathf.Sqrt(Mathf.Pow(2.0f, 2.0f/3.0f) -1.0f);
-		Vector3 vcirc = CircularXY(cls.Mcl);
+		Vector3 vGc = CircularXY(cls.Mcl)*(1.0f - ecc); //is this correct?
+		float galMass = MWmass(Rgc);
 		//from McCluster
 		float Rtide = Mathf.Pow(1.0f*cls.Mcl/(3.0f*galMass), 1.0f/3.0f)*Rgc;
-		fmGal = CONSTANTS.G*galMass/(Rgc*Rgc);
 
-		Debug.Log("cluster mass, velocity, Rhm, rtide, vscale = "+cls.Mcl+" "+vcirc+" "+Rhm+" "+Rtide+" "+vScale);
+		Debug.Log("cluster mass, velocity, Rhm, rtide, vscale, Mgal = "+cls.Mcl+" "+vGc+" "+Rhm+" "+Rtide+" "+vScale+" "+galMass);
 
 		//now set the positions and velocities
 		for (i = 0; i < N; i++){
@@ -760,7 +800,7 @@ public class NbodyCompute : MonoBehaviour {
 			//It seems like there is a factor of 2 missing somewhere.  Using these velocities, the cluster always flies apart
 			float phi = -CONSTANTS.G*cls.Mcl/rpl*Mathf.Pow(1.0f + Mathf.Pow(r/rpl, 2.0f), -0.5f);
 			vesc = Mathf.Sqrt(-2.0f*phi);
-			float v = psi*vesc*vScale*0.5f; //added factor of 0.5 here, not sure it's correct, but it seems needed to avoid collapse
+			float v = psi*vesc*vScale*0.5f; //added factor of 0.5 here, not sure it's correct, but it seems needed to avoid the cluster exploding initially
 			float vz = (2.0f*X4 - 1.0f)*v;
 			float vxy = Mathf.Sqrt(v*v - vz*vz);
 			float vx = vxy*Mathf.Cos(X5);
@@ -773,9 +813,9 @@ public class NbodyCompute : MonoBehaviour {
 			// 	vy = FractalStar[i,5];
 			// 	vz = FractalStar[i,6];
 			// }
-			cls.vel_data[i*3] = vx + vcirc.x;
-			cls.vel_data[i*3 + 1] = vy + vcirc.y;
-			cls.vel_data[i*3 + 2] = vz + vcirc.z;
+			cls.vel_data[i*3] = vx + vGc.x;
+			cls.vel_data[i*3 + 1] = vy + vGc.y;
+			cls.vel_data[i*3 + 2] = vz + vGc.z;
 			
 		}
 
@@ -786,9 +826,9 @@ public class NbodyCompute : MonoBehaviour {
 		cls.pos_data[i*3] = center.x;
 		cls.pos_data[i*3 + 1] = center.y;
 		cls.pos_data[i*3 + 2] = center.z;
-		cls.vel_data[i*3] = vcirc.x;
-		cls.vel_data[i*3 + 1] = vcirc.y;
-		cls.vel_data[i*3 + 2] = vcirc.z;
+		cls.vel_data[i*3] = vGc.x;
+		cls.vel_data[i*3 + 1] = vGc.y;
+		cls.vel_data[i*3 + 2] = vGc.z;
 		cls.mass_data[i*3] = cls.Mcl; 
 		cls.rad_data[i] = 0.0f; 
 
@@ -802,6 +842,7 @@ public class NbodyCompute : MonoBehaviour {
 		Vector3 center = new Vector3(Rgc, 0.0f, 0.0f);
 		float rpl = Rhm*Mathf.Sqrt(Mathf.Pow(2.0f, 2.0f/3.0f) -1.0f);
 		Vector3 vcirc = CircularXY(cls.Mcl);
+		float galMass = MWmass(Rgc);
 		//from McCluster
 		float Rtide = Mathf.Pow(1.0f*cls.Mcl/(3.0f*galMass), 1.0f/3.0f)*Rgc;
 		fmGal = CONSTANTS.G*galMass/(Rgc*Rgc);
@@ -924,6 +965,7 @@ public class NbodyCompute : MonoBehaviour {
 
 	void Start(){
 		cameraMover = GameObject.Find("CameraCenter").GetComponent<CameraMover>();
+		cameraCenter = GameObject.Find("CameraCenter").GetComponent<Transform>();
 		bc = GameObject.Find("ButtonController").GetComponent<ButtonController>();
 
 		InitBuffers(NumBodiesMax);
@@ -952,6 +994,7 @@ public class NbodyCompute : MonoBehaviour {
 	// 	if (!bc.paused)	Time.timeScale = tScale;
 	// 	dt = Time.fixedDeltaTime;
 	void Update(){
+
 		//sending units of pc, MSun, Myr, but sizes in RSun
 		if (!bc.paused)	Time.timeScale = tScale;
 		dt = Time.deltaTime;
@@ -965,7 +1008,6 @@ public class NbodyCompute : MonoBehaviour {
 		computeShader.SetFloat("rcolFac",rcolFac); 
 		computeShader.SetFloat("restitution", restitution);
 		computeShader.SetFloat("neta", neta);
-		computeShader.SetFloat("fmGal", fmGal);
 
 		//Debug.Log(dt+" "+Time.timeScale+" "+bc.paused);
 
