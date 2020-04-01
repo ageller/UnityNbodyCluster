@@ -51,6 +51,7 @@ public class ButtonController : MonoBehaviour {
 			GameObject.Find("NSlider").GetComponentInChildren<Slider>().interactable = false;
 			GameObject.Find("FractalSlider").GetComponentInChildren<Slider>().interactable = false;
 			GameObject.Find("RgcSlider").GetComponentInChildren<Slider>().interactable = false;
+			GameObject.Find("eccSlider").GetComponentInChildren<Slider>().interactable = false;
 
 			TrailRenderer tr = GameObject.Find("CameraCenter").GetComponent<TrailRenderer>();
 			GameObject.Find("CameraCenter").GetComponent<TrailController>().enabled = true;

@@ -8,6 +8,7 @@ using UnityEngine;
 public class NbodyCompute : MonoBehaviour {
 
 	public ComputeShader computeShader;
+	public Transform cameraCenter;
 
 	public int NumBodies = 30000;
 	private int NumBodiesMax = 50000; //try setting up this system to start and then just limiting the max array location?
@@ -24,6 +25,7 @@ public class NbodyCompute : MonoBehaviour {
 	public float neta = 0.5f;//neta for Reimer's mass loss
 	public float Zmet = 0.02f;//metalicity (0.02 is solar)
 	public float Rgc = 8000.0f; //parsecs, distance of cluster from center of galaxy
+	public float hgc = 0.0f;//parsecs, height above the galactic plane
 	public float ecc = 0.0f;//orbital eccentricity of galactic orbit (am I using this correctly?)
 	public float DFractal = 3.0f;// fractal dimension =3.0 unfractal, =2.6 2/8 fractal, =2.0 4/8 fractal, =1.6 6/8 fractal, (2^D children per parent, following Goodwin & Whitworth 2004);
 	//public float galMass = 1e11f; //solMass, mass of point-mass galaxy, mass inside Sun
@@ -71,8 +73,6 @@ public class NbodyCompute : MonoBehaviour {
 	//private const int floatSize = 12;//sizeof(float); = 4, but that doesn't seem correct! gives errors
 	private const int floatSize = sizeof(float);// = 4, but that doesn't seem correct! gives errors
 
-	private CameraMover cameraMover;
-	private Transform cameraCenter;
 	private ButtonController bc;
 
 	public GameObject galaxyCenter;
@@ -119,8 +119,7 @@ public class NbodyCompute : MonoBehaviour {
 		initPlummer(NumBodies);
 		SetShaderData();
 
-		//send this so that the camera knows the cluster mass 
-		cameraMover.SendMessage("MclReceiver", cls.Mcl);
+		InitCameraMover();
 	}
 	float KTGmass(){
 		//Eq. 14 from Kroupa, Tout & Gilmore (1993)
@@ -135,8 +134,11 @@ public class NbodyCompute : MonoBehaviour {
 		return 0.08f + (c1*Mathf.Pow(X, c2) + c3*Mathf.Pow(X, c4))/Mathf.Pow(1.0f - X, 0.58f);
 	}
 
-	float MWmass(float r){
 
+	float MWmass(float r){
+		//Milky Way mass as a function of radius
+		//NOTE: this assumes that the orbit is in the plane of the galactic disk.
+		
 		//Navarro-Frenk-White dark-matter halo mass as a function of radius for galaxy
 		//https://en.wikipedia.org/wiki/Navarro%E2%80%93Frenk%E2%80%93White_profile
 		//taking these values from table 1 in this paper: https://arxiv.org/pdf/1304.5127.pdf
@@ -318,7 +320,8 @@ public class NbodyCompute : MonoBehaviour {
 	Vector3 CircularXY(float Mcl){
 		
 		//https://stackoverflow.com/questions/14845273/initial-velocity-vector-for-circular-orbit
-		Vector3 dir = new Vector3(Rgc, 0.0f, 0.0f);
+		float xgc = Mathf.Sqrt(Rgc*Rgc + hgc*hgc);
+		Vector3 dir = new Vector3(xgc, hgc, 0.0f);
 		Vector3 dirNorm = dir/dir.magnitude;//(dir.x + dir.y + dir.z);
 		float cosphi = dirNorm.x;
 		float sinphi = dirNorm.z;
@@ -740,7 +743,8 @@ public class NbodyCompute : MonoBehaviour {
 
 		int i;
 
-		Vector3 center = new Vector3(Rgc, 0.0f, 0.0f);
+		float xgc = Mathf.Sqrt(Rgc*Rgc + hgc*hgc);
+		Vector3 center = new Vector3(xgc, hgc, 0.0f);
 		float rpl = Rhm*Mathf.Sqrt(Mathf.Pow(2.0f, 2.0f/3.0f) -1.0f);
 		Vector3 vGc = CircularXY(cls.Mcl)*(1.0f - ecc); //is this correct?
 		float galMass = MWmass(Rgc);
@@ -839,7 +843,8 @@ public class NbodyCompute : MonoBehaviour {
 
 		int i;
 
-		Vector3 center = new Vector3(Rgc, 0.0f, 0.0f);
+		float xgc = Mathf.Sqrt(Rgc*Rgc + hgc*hgc);
+		Vector3 center = new Vector3(xgc, hgc, 0.0f);
 		float rpl = Rhm*Mathf.Sqrt(Mathf.Pow(2.0f, 2.0f/3.0f) -1.0f);
 		Vector3 vcirc = CircularXY(cls.Mcl);
 		float galMass = MWmass(Rgc);
@@ -964,8 +969,6 @@ public class NbodyCompute : MonoBehaviour {
 
 
 	void Start(){
-		cameraMover = GameObject.Find("CameraCenter").GetComponent<CameraMover>();
-		cameraCenter = GameObject.Find("CameraCenter").GetComponent<Transform>();
 		bc = GameObject.Find("ButtonController").GetComponent<ButtonController>();
 
 		InitBuffers(NumBodiesMax);
@@ -984,7 +987,6 @@ public class NbodyCompute : MonoBehaviour {
 
 		//this will copy from the initial state, and then (re)do the Plummer positions and velocities, and set the Shader data
 		doInit();
-
 	}
 	
 
@@ -1019,5 +1021,41 @@ public class NbodyCompute : MonoBehaviour {
 	void OnDestroy(){
 		DisposeOfBuffers();
 
+	}
+
+
+	//////////////////////////////////
+	//to move the camera so that the cluster actually orbits the galaxy when rendered
+	void Attract()
+	{
+
+		float epsilon = 0.0f;//softening
+
+		//to otherBody
+		Vector3 direction = cameraCenter.GetComponent<Rigidbody>().position; //galaxy center is fixed at 0,0,0
+		float distance = direction.magnitude;
+		float galMass = MWmass(distance);
+
+		float forceMagnitude = -CONSTANTS.G*(cls.Mcl*galMass)/(Mathf.Pow(distance, 2) + Mathf.Pow(epsilon,2));
+		Vector3 force = direction.normalized*forceMagnitude;
+
+		cameraCenter.GetComponent<Rigidbody>().AddForce(force);
+	}
+
+	void InitCameraMover(){
+
+		float xgc = Mathf.Sqrt(Rgc*Rgc + hgc*hgc);
+		Vector3 pos = new Vector3(xgc, hgc, 0.0f);
+
+		cameraCenter.GetComponent<Transform>().position = pos;
+		cameraCenter.GetComponent<Rigidbody>().position = pos;
+		cameraCenter.GetComponent<Rigidbody>().mass = cls.Mcl;
+		cameraCenter.GetComponent<Rigidbody>().velocity = CircularXY(cls.Mcl)*(1.0f - ecc); //am I using this correctly?
+
+	}
+
+	void FixedUpdate(){
+	//void Update(){
+		Attract();
 	}
 }
