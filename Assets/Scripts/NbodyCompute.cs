@@ -32,7 +32,6 @@ public class NbodyCompute : MonoBehaviour {
 	public float Rhm = 2.0f;//pc, half-mass radius (for cluster integration only)
 
 	public static ComputeBuffer pos_buf;
-	public static ComputeBuffer posCoM_buf;
 	public static ComputeBuffer vel_buf;
 	public static ComputeBuffer mass_buf;
 	public static ComputeBuffer rad_buf;
@@ -49,7 +48,6 @@ public class NbodyCompute : MonoBehaviour {
 
 	public struct Cluster{
 		public float[] pos_data;
-		public float[] posCoM_data;
 		public float[] vel_data;
 		public float[] mass_data;
 		public float[] rad_data;
@@ -138,7 +136,7 @@ public class NbodyCompute : MonoBehaviour {
 	float MWmass(float r){
 		//Milky Way mass as a function of radius
 		//NOTE: this assumes that the orbit is in the plane of the galactic disk.
-		
+
 		//Navarro-Frenk-White dark-matter halo mass as a function of radius for galaxy
 		//https://en.wikipedia.org/wiki/Navarro%E2%80%93Frenk%E2%80%93White_profile
 		//taking these values from table 1 in this paper: https://arxiv.org/pdf/1304.5127.pdf
@@ -333,8 +331,7 @@ public class NbodyCompute : MonoBehaviour {
 	}
 
 	void InitStruct(int N){
-		cls.pos_data = new float[N*3];
-		cls.posCoM_data = new float[N*3];
+		cls.pos_data = new float[N*3*2];
 		cls.vel_data = new float[N*3];
 		cls.mass_data = new float[N*3];
 		cls.rad_data = new float[N];
@@ -343,8 +340,7 @@ public class NbodyCompute : MonoBehaviour {
 		cls.lgb_data = new float[N*4];
 		cls.Mcl = 0.0f;
 
-		cls0.pos_data = new float[N*3];
-		cls0.posCoM_data = new float[N*3];
+		cls0.pos_data = new float[N*3*2];
 		cls0.vel_data = new float[N*3];
 		cls0.mass_data = new float[N*3];
 		cls0.rad_data = new float[N];
@@ -408,9 +404,9 @@ public class NbodyCompute : MonoBehaviour {
 			cls.pos_data[i*3 + 1] = cls0.pos_data[i*3 + 1];
 			cls.pos_data[i*3 + 2] = cls0.pos_data[i*3 + 2];
 
-			cls.posCoM_data[i*3] = cls0.posCoM_data[i*3];
-			cls.posCoM_data[i*3 + 1] = cls0.posCoM_data[i*3 + 1];
-			cls.posCoM_data[i*3 + 2] = cls0.posCoM_data[i*3 + 2];
+			cls.pos_data[i*3 + NumBodiesMax] = cls0.pos_data[i*3 + NumBodiesMax];
+			cls.pos_data[i*3 + 1 + NumBodiesMax] = cls0.pos_data[i*3 + 1 + NumBodiesMax];
+			cls.pos_data[i*3 + 2 + NumBodiesMax] = cls0.pos_data[i*3 + 2 + NumBodiesMax];
 
 			cls.vel_data[i*3] = cls0.vel_data[i*3];
 			cls.vel_data[i*3 + 1] = cls0.vel_data[i*3 + 1];
@@ -725,9 +721,9 @@ public class NbodyCompute : MonoBehaviour {
 			cls0.pos_data[i*3 + 1] = y;
 			cls0.pos_data[i*3 + 2] = z;
 
-			cls0.posCoM_data[i*3] = x;
-			cls0.posCoM_data[i*3 + 1] = y;
-			cls0.posCoM_data[i*3 + 2] = z;
+			cls0.pos_data[i*3 + NumBodiesMax] = x;
+			cls0.pos_data[i*3 + 1 + NumBodiesMax] = y;
+			cls0.pos_data[i*3 + 2 + NumBodiesMax] = z;
 
 			//not sure I can give unscaled velocities?
 			cls0.vel_data[i*3] = 0.0f;
@@ -793,9 +789,9 @@ public class NbodyCompute : MonoBehaviour {
 			cls.pos_data[i*3 + 1] = y + center.y;
 			cls.pos_data[i*3 + 2] = z + center.z;
 
-			cls.posCoM_data[i*3] = x;
-			cls.posCoM_data[i*3 + 1] = y;
-			cls.posCoM_data[i*3 + 2] = z;
+			cls.pos_data[i*3 + NumBodiesMax] = x;
+			cls.pos_data[i*3 + 1 + NumBodiesMax] = y;
+			cls.pos_data[i*3 + 2 + NumBodiesMax] = z;
 
 			//velocities
 			float X4 = Random.Range(0.0f, 1.0f);
@@ -891,9 +887,9 @@ public class NbodyCompute : MonoBehaviour {
 			cls.pos_data[i*3 + 1] = y + center.y;
 			cls.pos_data[i*3 + 2] = z + center.z;
 
-			cls.posCoM_data[i*3] = x;
-			cls.posCoM_data[i*3 + 1] = y;
-			cls.posCoM_data[i*3 + 2] = z;
+			cls.pos_data[i*3 + NumBodiesMax] = x;
+			cls.pos_data[i*3 + 1 + NumBodies] = y;
+			cls.pos_data[i*3 + 2 + NumBodiesMax] = z;
 
 			cls.vel_data[i*3] = vx + vcirc.x;
 			cls.vel_data[i*3 + 1] = vy + vcirc.y;
@@ -921,8 +917,7 @@ public class NbodyCompute : MonoBehaviour {
 		//initialize all the buffers
 		//something is strange about the amount of size needed here;
 		// with floatSize = 12, this works for 10k, 15k and 30k particles, but not 20k
-		pos_buf = new ComputeBuffer(N, 3*floatSize, ComputeBufferType.Default);
-		posCoM_buf = new ComputeBuffer(N, 3*floatSize, ComputeBufferType.Default);
+		pos_buf = new ComputeBuffer(2*N, 3*floatSize, ComputeBufferType.Default);
 		vel_buf = new ComputeBuffer(N, 3*floatSize, ComputeBufferType.Default);
 		mass_buf = new ComputeBuffer(N, 3*floatSize, ComputeBufferType.Default); //mnow, m0, mcore (currently don't have mcore)
 		rad_buf = new ComputeBuffer(N, floatSize, ComputeBufferType.Default);
@@ -932,7 +927,6 @@ public class NbodyCompute : MonoBehaviour {
 
 		// These global buffers apply to every shader with these buffers defined.
 		Shader.SetGlobalBuffer(Shader.PropertyToID("position"), pos_buf);
-		Shader.SetGlobalBuffer(Shader.PropertyToID("positionCoM"), posCoM_buf);
 		Shader.SetGlobalBuffer(Shader.PropertyToID("velocity"), vel_buf);
 		Shader.SetGlobalBuffer(Shader.PropertyToID("mass"), mass_buf);
 		Shader.SetGlobalBuffer(Shader.PropertyToID("radius"), rad_buf);
@@ -947,7 +941,6 @@ public class NbodyCompute : MonoBehaviour {
 
 	void SetShaderData(){
 		pos_buf.SetData(cls.pos_data);
-		posCoM_buf.SetData(cls.posCoM_data);
 		vel_buf.SetData(cls.vel_data);
 		mass_buf.SetData(cls.mass_data);
 		rad_buf.SetData(cls.rad_data);
@@ -958,7 +951,6 @@ public class NbodyCompute : MonoBehaviour {
 
 	void DisposeOfBuffers(){
 		pos_buf.Dispose();
-		posCoM_buf.Dispose();
 		vel_buf.Dispose();
 		mass_buf.Dispose();
 		rad_buf.Dispose();
@@ -970,6 +962,7 @@ public class NbodyCompute : MonoBehaviour {
 
 	void Start(){
 		bc = GameObject.Find("ButtonController").GetComponent<ButtonController>();
+		GameObject.Find("NbodyCompute").GetComponent<NbodyRenderer>().SendMessage("NumBodiesMaxReceiver", NumBodiesMax);
 
 		InitBuffers(NumBodiesMax);
 		InitStruct(NumBodiesMax);
@@ -1004,6 +997,7 @@ public class NbodyCompute : MonoBehaviour {
 		computeShader.SetFloat("deltaTime", dt);
 		computeShader.SetFloat("time", time);
 		computeShader.SetInt("NumBodies", NumBodies);
+		computeShader.SetInt("NumBodiesMax", NumBodiesMax);
 		computeShader.SetFloat("Softening", Softening);
 		computeShader.SetFloat("G", CONSTANTS.G);
 		computeShader.SetFloat("dvelMax",dvelMax); 

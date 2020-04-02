@@ -23,12 +23,16 @@ public class NbodyRenderer : MonoBehaviour {
 
 	//This is NumBodies from the NbodyCompute C# script, I need to link these below
 	private static int NumBodies;
+	private static int NumBodiesMax;
 
 	//sounds like it can only render 1023 at a time
 	const int instance_max = 1023;
 
 	private Transform CameraTarget;
 
+	public void NumBodiesMaxReceiver(int val){
+		NumBodiesMax = val;
+	}
 	public void BHSizeReceiver(float val){
 		BHSize = Mathf.Pow(10.0f,val);
 	}
@@ -116,6 +120,7 @@ public class NbodyRenderer : MonoBehaviour {
 		for (int set = 0; set < Ninstances; set++){
 			MaterialPropertyBlock mpb = new MaterialPropertyBlock();
 			mpb.SetInt("offset", set*instance_max);
+			mpb.SetInt("NumBodiesMax", NumBodiesMax);
 			mpb.SetFloat("minSize", minSize);
 			mpb.SetFloat("maxSize", maxSize);
 			mpb.SetFloat("BHSize", BHSize);

@@ -6,15 +6,15 @@ public class NbodyRendererSliderController : MonoBehaviour {
 	
 	public string Name;
 
-	private NbodyRenderer renderer;
+	private NbodyRenderer rend;
 	private Slider slider;
 
 	private float value = 1.0f;
 
 	void Awake(){
-		renderer = GameObject.Find("NbodyCompute").GetComponent<NbodyRenderer>();
+		rend = GameObject.Find("NbodyCompute").GetComponent<NbodyRenderer>();
 		slider = GetComponent<Slider>();
-		value = Mathf.Log10((float)renderer.GetType().GetField(Name).GetValue(renderer));
+		value = Mathf.Log10((float)rend.GetType().GetField(Name).GetValue(rend));
 		slider.value = value;
 
 	}
@@ -23,7 +23,7 @@ public class NbodyRendererSliderController : MonoBehaviour {
 
 		if (slider.value != value) {
 			value = slider.value;
-			renderer.SendMessage(Name+"Receiver", value);
+			rend.SendMessage(Name+"Receiver", value);
 
 		}
 

@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class TrailController : MonoBehaviour
 {
-	public Camera camera;
+	public Camera mainCamera;
 
 	private TrailRenderer tr;
 	private bool trailOn = false;
@@ -24,7 +24,7 @@ public class TrailController : MonoBehaviour
 		}
 
 		//Camera's distance to parent object
-		Vector3 direction = camera.transform.position - GetComponent<Rigidbody>().position;
+		Vector3 direction = mainCamera.transform.position - GetComponent<Rigidbody>().position;
 		float distance = direction.magnitude;
 		if (distance > 50.0f){
 			tr.widthMultiplier = distance/200.0f;

@@ -24,15 +24,6 @@ public class GalaxyCloudForge : MonoBehaviour
 	//galaxy image material
 	public Material galaxyMat;
 
-	// Galaxy dimensions
-	// Result of trial and error by visually matching the EDSM.net star data onto
-	// the generated galaxy plane. EDSM star data is (0,0,0) on Sol.
-	// Note that this star data visualisation is not part of this demo.
-	private readonly float galaxyXBase = 0f; // left 
-	private readonly float galaxyZBase = 0f; // bottom
-	private readonly float galaxyYBase = 0f;    // Galactic plane
-
-
 	// Particles added to the particle system of the current transform.
 	// It should use a custom material set to the default (Unity3D) Particle bitmap
 	// but the Built-in "Additive (Soft)" shader.
@@ -54,7 +45,7 @@ public class GalaxyCloudForge : MonoBehaviour
 		textureCenterY = textureHeight/2;
 
 		particles.Clear(); // In case we call the method in a loop for debugging
-        int attractor = 0;
+        //int attractor = 0;
 
 		// Generate large clouds
 		// ---------------------
@@ -86,7 +77,7 @@ public class GalaxyCloudForge : MonoBehaviour
 
 				ParticleSystem.Particle p = new ParticleSystem.Particle
 				{
-					position = new Vector3(px, galaxyYBase, pz),
+					position = new Vector3(px, 0f, pz),
 					startSize = Random.Range(100f*axisDistanceFactor, 140f*axisDistanceFactor),
 					startColor = new Color(c.r, c.g, c.b, 0.05f + (1.0f - axisDistanceFactor) * 0.3f + blueFactor)
 				};
@@ -120,7 +111,7 @@ public class GalaxyCloudForge : MonoBehaviour
 
 			// 		ParticleSystem.Particle p2 = new ParticleSystem.Particle
 			// 		{
-			// 			position = new Vector3(px, galaxyYBase + py, pz),
+			// 			position = new Vector3(px, py, pz),
 			// 			startSize = Random.Range(40f*axisDistanceFactor, 80f*axisDistanceFactor),
 			// 			startColor = new Color(c.r, c.g, c.b, Random.Range(0.1f, 0.3f * axisDistanceFactor + blueFactor))
 			// 		};
@@ -142,7 +133,7 @@ public class GalaxyCloudForge : MonoBehaviour
 			// 		py = Random.Range(-0.2f*axisDistanceFactor, 0.2f*axisDistanceFactor);
 			// 		ParticleSystem.Particle p3 = new ParticleSystem.Particle
 			// 		{
-			// 			position = new Vector3(px, galaxyYBase + py, pz),
+			// 			position = new Vector3(px, py, pz),
 			// 			startSize = Random.Range(10f, 20f),
 			// 			startColor = new Color(1, 1, 1, Random.Range(0.4f, 0.7f))
 			// 		};

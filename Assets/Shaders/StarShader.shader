@@ -10,7 +10,7 @@ Shader "Custom/Star"
 	SubShader
 	{
 		//added disable batching to stop flickering
-		Tags {"Queue" = "Transparent" "RenderType" = "Transparent" "DisableBatching" = "True"}
+		Tags {"Queue" = "Transparent+1" "RenderType" = "Transparent" "DisableBatching" = "True"}
 		LOD 100
 
 		Cull Off
@@ -32,15 +32,16 @@ Shader "Custom/Star"
 			#include "UnityCG.cginc"
 
 			//I think this is where the position is pulled from the compute shader
-			//uniform StructuredBuffer<float3> position : register(t1);
-			uniform StructuredBuffer<float3> positionCoM : register(t8);
+			uniform StructuredBuffer<float3> position : register(t1);
 			uniform StructuredBuffer<float> radius : register(t4);
 			uniform StructuredBuffer<float> luminosity : register(t5);
 
 			uniform sampler2D colormap;
 
-			uniform int offset;
 			uniform float _Scale;
+
+			uniform int offset;
+			uniform int NumBodiesMax;
 			uniform float minSize;
 			uniform float maxSize;
 
@@ -171,7 +172,7 @@ Shader "Custom/Star"
 				// add vertex positions to view position pivot
 				viewPos.xy += vertex;
  
- 				viewPos += float4(UnityObjectToViewPos(positionCoM[instancePos + offset]), 0.0f);
+ 				viewPos += float4(UnityObjectToViewPos(position[instancePos + offset + NumBodiesMax]), 0.0f);
 
 				// transform into clip space
 				o.pos = mul(UNITY_MATRIX_P, viewPos);
@@ -218,6 +219,7 @@ Shader "Custom/Star"
 				if (i.special < 2){
 					alpha = 1. - pow(dist, 3.);
 				}
+				if (i.special >= 2 && dist >= 0.9) alpha *=1.5;
 
 				return float4(useColor, alpha);
 			}

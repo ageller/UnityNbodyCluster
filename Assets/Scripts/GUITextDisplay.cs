@@ -4,13 +4,13 @@ using System.Collections;
 public class GUITextDisplay : MonoBehaviour
 {
 
-	private MouseOrbitImproved camera;
+	private MouseOrbitImproved mainCamera;
 	float deltaTime = 0.0f;
 	float time = 0.0f;
 
 	void Start(){
 		//camera = GameObject.Find("CameraController").GetComponent<MouseOrbitImproved>();
-		camera = GameObject.Find("MainCamera").GetComponent<MouseOrbitImproved>();
+		mainCamera = GameObject.Find("MainCamera").GetComponent<MouseOrbitImproved>();
 
 	}
 
@@ -44,7 +44,7 @@ public class GUITextDisplay : MonoBehaviour
 		style.alignment = TextAnchor.UpperLeft;
 		style.fontSize = fs;
 		style.normal.textColor = new Color(1.0f, 1.0f, 1.0f, 1.0f);
-		text = string.Format("{0:0.0} pc", camera.distance);
+		text = string.Format("{0:0.0} pc", mainCamera.distance);
 		GUI.Label(rect, text, style);
 
 		//FPS

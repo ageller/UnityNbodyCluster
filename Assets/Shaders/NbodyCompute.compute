@@ -16,9 +16,9 @@ uniform RWStructuredBuffer<float> radius : register(u4);
 uniform RWStructuredBuffer<float> luminosity : register(u5);
 uniform RWStructuredBuffer<float4> tgb : register(u6);
 uniform RWStructuredBuffer<float4> lgb : register(u7);
-uniform RWStructuredBuffer<float3> positionCoM : register(u8);
 
 uniform uint NumBodies;
+uniform uint NumBodiesMax;
 uniform float Softening;
 uniform float G;
 uniform float neta; //Reimer's mass loss coefficient
@@ -456,7 +456,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 		//integrateRK4(id.x);
 
 		//shift to the center-of-mass frame using the computed full cluster position
-		positionCoM[id.x] = position[id.x] - position[idx];
+		position[id.x + NumBodiesMax] = position[id.x] - position[idx];
 
 	}
 }

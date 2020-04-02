@@ -26,8 +26,8 @@ public class MouseOrbitImproved : MonoBehaviour {
  
 	public float friction = 0.15f;
 
-	private Rigidbody rigidbody;
-	private Camera camera;
+	private Rigidbody rb;
+	private Camera mainCamera;
 
 	float x = 0.0f;
 	float y = 0.0f;
@@ -39,17 +39,17 @@ public class MouseOrbitImproved : MonoBehaviour {
 
 	// Use this for initialization
 	void Start (){
-		camera = GameObject.Find("MainCamera").GetComponent<Camera>();
+		mainCamera = GameObject.Find("MainCamera").GetComponent<Camera>();
 		
 		Vector3 angles = transform.eulerAngles;
 		x = angles.y;
 		y = angles.x;
  
-		rigidbody = GetComponent<Rigidbody>();
+		rb = GetComponent<Rigidbody>();
  
 		// Make the rigid body not change rotation
-		if (rigidbody != null){
-			rigidbody.freezeRotation = true;
+		if (rb != null){
+			rb.freezeRotation = true;
 		}
 
 	}
@@ -91,8 +91,9 @@ public class MouseOrbitImproved : MonoBehaviour {
 			Vector3 position = rotation*negDistance + target.position;
 
 			//apply transformations
-			camera.transform.rotation = rotation;
-			camera.transform.position = position + panMover.position;
+			mainCamera.transform.rotation = rotation;
+			mainCamera.transform.position = position + panMover.position;
+
 
 		}
 
