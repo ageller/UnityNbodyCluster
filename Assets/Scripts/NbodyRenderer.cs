@@ -106,7 +106,7 @@ public class NbodyRenderer : MonoBehaviour {
 			{
 				Matrix4x4 matrix = new Matrix4x4();
 				//matrix.SetTRS(Vector3.zero, Quaternion.Euler(Vector3.zero), Vector3.one);
-				//THIS SETTING IN VERY IMPORTANT.  Instancing will only be active (and therefore the object will only be drawn) when the first Vector3 is within the camera's view.  For instance, if it is set to Vector3.zero, the Nbody particles will only be drawn when the scene's origin is in view of the camera!
+				//THIS SETTING IS VERY IMPORTANT.  Instancing will only be active (and therefore the object will only be drawn) when the first Vector3 is within the camera's view.  For instance, if it is set to Vector3.zero, the Nbody particles will only be drawn when the scene's origin is in view of the camera!
 				matrix.SetTRS(CameraTarget.position, Quaternion.Euler(Vector3.zero), Vector3.one);
 				//matrix.SetTRS(Vector3.zero, Quaternion.Euler(Vector3.zero), Vector3.one);
 				transformList[set][i] = matrix;
@@ -133,7 +133,7 @@ public class NbodyRenderer : MonoBehaviour {
 			{
 				Matrix4x4 matrix = new Matrix4x4();
 				//matrix.SetTRS(Vector3.zero, Quaternion.Euler(Vector3.zero), Vector3.one);
-				//THIS SETTING IN VERY IMPORTANT.  Instancing will only be active (and therefore the object will only be drawn) when the first Vector3 is within the camera's view.  For instance, if it is set to Vector3.zero, the Nbody particles will only be drawn when the scene's origin is in view of the camera!
+				//THIS SETTING IS VERY IMPORTANT.  Instancing will only be active (and therefore the object will only be drawn) when the first Vector3 is within the camera's view.  For instance, if it is set to Vector3.zero, the Nbody particles will only be drawn when the scene's origin is in view of the camera!
 				matrix.SetTRS(CameraTarget.position, Quaternion.Euler(Vector3.zero), Vector3.one);
 				transformList[set][i] = matrix;
 			}

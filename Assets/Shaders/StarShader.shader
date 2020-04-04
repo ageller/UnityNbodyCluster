@@ -33,8 +33,7 @@ Shader "Custom/Star"
 
 			//I think this is where the position is pulled from the compute shader
 			uniform StructuredBuffer<float3> position : register(t1);
-			uniform StructuredBuffer<float> radius : register(t4);
-			uniform StructuredBuffer<float> luminosity : register(t5);
+			uniform StructuredBuffer<float4> mrl : register(t3);
 
 			uniform sampler2D colormap;
 
@@ -106,34 +105,34 @@ Shader "Custom/Star"
 
 
 				//scaling, if desired
-				o.rad = radius[instancePos + offset];
+				o.rad = mrl[instancePos + offset].z;
 				float rad = 1.;
-				if (luminosity[instancePos + offset] > 0.) {
-					rad = clamp(log(radius[instancePos + offset])*_Scale*NmlSize, minSize, maxSize);
-					o.teff = TeffFromLR(luminosity[instancePos + offset], radius[instancePos + offset]);
+				if (mrl[instancePos + offset].w > 0.) {
+					rad = clamp(log(mrl[instancePos + offset].z)*_Scale*NmlSize, minSize, maxSize);
+					o.teff = TeffFromLR(mrl[instancePos + offset].w, mrl[instancePos + offset].z);
 					o.special = 0;
 				} else{
 
 					o.special = 2;
 					o.teff = 0.;
 
-					if (luminosity[instancePos + offset] == -40.){ //supernovae
+					if (mrl[instancePos + offset].w == -40.){ //supernovae
 						o.color = float4(1., 1., 0., 1.);
 						rad = 0.5;
 						o.special = 1;
 					}
 
-					if (luminosity[instancePos + offset] == -30.){ //black holes
+					if (mrl[instancePos + offset].w == -30.){ //black holes
 						o.color = float4(0., 1., 0., 0.5);
 						rad = BHSize*_Scale;
 					}
 
-					if (luminosity[instancePos + offset] == -20.){ //neutron stars
+					if (mrl[instancePos + offset].w == -20.){ //neutron stars
 						o.color = float4(1., 0., 1., 0.5);
 						rad = NSSize*_Scale;
 					}
 
-					if (luminosity[instancePos + offset] == -10.){ //white dwarfs
+					if (mrl[instancePos + offset].w == -10.){ //white dwarfs
 						o.color = float4(0., 1., 1., 0.5);
 						rad = WDSize*_Scale;
 					}

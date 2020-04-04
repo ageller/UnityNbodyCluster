@@ -56,6 +56,9 @@ public class MouseOrbitImproved : MonoBehaviour {
  
 	void LateUpdate (){
 
+		float frictionUse = friction;
+		if (Input.GetKey("space")) frictionUse = 0.0f;
+
 		if (target){
 			//x,y rotation
 			var mouseBtn = Input.GetMouseButton(0);
@@ -64,8 +67,8 @@ public class MouseOrbitImproved : MonoBehaviour {
 				dy = Input.GetAxis("Mouse Y")*ySpeed;
 
 			} else {
-				dx *= (1.0f - friction);
-				dy *= (1.0f - friction);
+				dx *= (1.0f - frictionUse);
+				dy *= (1.0f - frictionUse);
 			}
 			x += dx;
 			y -= dy;
@@ -76,7 +79,7 @@ public class MouseOrbitImproved : MonoBehaviour {
 			if (Input.GetAxis("Mouse ScrollWheel") != 0 && !EventSystem.current.IsPointerOverGameObject ()){
 				dz = Input.GetAxis("Mouse ScrollWheel");
 			} else {
-				dz *= (1.0f - friction);
+				dz *= (1.0f - frictionUse);
 			}
 			//scale the rate by the distance
 			float dScale = Mathf.Pow(1.0f + distance, 0.5f);

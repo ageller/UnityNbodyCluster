@@ -11,11 +11,9 @@
 
 uniform RWStructuredBuffer<float3> position : register(u1);
 uniform RWStructuredBuffer<float3> velocity : register(u2);
-uniform RWStructuredBuffer<float3> mass : register(u3);
-uniform RWStructuredBuffer<float> radius : register(u4);
-uniform RWStructuredBuffer<float> luminosity : register(u5);
-uniform RWStructuredBuffer<float4> tgb : register(u6);
-uniform RWStructuredBuffer<float4> lgb : register(u7);
+uniform RWStructuredBuffer<float4> mrl : register(u3);
+uniform RWStructuredBuffer<float4> tgb : register(u4);
+uniform RWStructuredBuffer<float4> lgb : register(u5);
 
 uniform uint NumBodies;
 uniform uint NumBodiesMax;
@@ -38,6 +36,47 @@ uniform float restitution; //factor applied to velocity upon collision recoil
 // same as in NBodyCompute
 #define BLOCKSIZE	128
 
+//from https://gist.github.com/patriciogonzalezvivo/670c22f3966e662d2f83
+//simple 3D noise
+//float mod289(float x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
+float4 mod289(float4 x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
+float4 perm(float4 x){return mod289(((x * 34.0) + 1.0) * x);}
+float4 fract(float4 p){
+	return float4(p.x - floor(p.x), p.y - floor(p.y), p.z - floor(p.z), p.w - floor(p.w));
+}
+float snoise(float3 p){
+    float3 a = floor(p);
+    float3 d = p - a;
+    d = d * d * (3.0 - 2.0 * d);
+
+    float4 b = a.xxyy + float4(0.0, 1.0, 0.0, 1.0);
+    float4 k1 = perm(b.xyxy);
+    float4 k2 = perm(k1.xyxy + b.zzww);
+
+    float4 c = k2 + a.zzzz;
+    float4 k3 = perm(c);
+    float4 k4 = perm(c + 1.0);
+
+    float4 o1 = fract(k3 * (1.0 / 41.0));
+    float4 o2 = fract(k4 * (1.0 / 41.0));
+
+    float4 o3 = o2 * d.z + o1 * (1.0 - d.z);
+    float2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);
+
+    return o4.y * d.y + o4.x * (1.0 - d.y);
+}
+float gaussRand(float3 seed1, float3 seed2){
+	//I *think* snoise return values between 0 and 1, testing with if statment that should return zero from this function if either is > 1
+	// e.g., 
+	//float X1 = snoise(normalize(seed1));
+	//float X2 = snoise(normalize(seed2));
+	//if (X1 > 1. || X2 > 1.) return 0.;
+
+	float X1 = clamp(snoise(normalize(seed1)), 0., 1.);
+	float X2 = clamp(snoise(normalize(seed2)), 0., 1.);
+
+	return sqrt(-2.*log(X1))*cos(2.*PI*X2);
+}
 
 float MSRadFromMass(float m){
 	//not sure where this came from
@@ -168,11 +207,11 @@ float4 get_acc_grav_collision(uint idx, float3 pos){
 
 	// Iterate over every body.
 	for (uint i = 0; i < NumBodies; i++){
-		if (i != idx && mass[i].x > 0.0){
+		if (i != idx && mrl[i].x > 0.0){
 
 			float4 intrsct = line_point_dist(position[idx], pos, position[i]);
 
-			if (intrsct.w <= rcolFac*(radius[i] + radius[idx])*RSun) {
+			if (intrsct.w <= rcolFac*(mrl[i].z + mrl[idx].z)*RSun) {
 				//collision
 				AC = i;
 
@@ -180,7 +219,7 @@ float4 get_acc_grav_collision(uint idx, float3 pos){
 				//normal gravity
 				float3 D = position[i] - pos;
 				float r = length(D);
-				float fm = G*mass[i].x/(r*r + Softening2);
+				float fm = G*mrl[i].x/(r*r + Softening2);
 				A += fm*normalize(D);
 			}
 
@@ -202,7 +241,7 @@ float3 get_acc_grav_simple(uint idx){
 			//normal gravity
 			float3 D = position[i] - position[idx];
 			float r = length(D);
-			float fm = G*mass[i].x/(r*r + Softening2);
+			float fm = G*mrl[i].x/(r*r + Softening2);
 			A += fm*normalize(D);
 
 		}
@@ -288,22 +327,22 @@ void integrateVerletWithCollision(uint idx, float dt){
 		} else {
 			
 			//inelastic collisions that stick together
-			float totalMass = mass[idx].x + mass[i].x;
-			float3 mom = mass[idx].x*velocity[idx] + mass[i].x*velocity[i];
+			float totalMass = mrl[idx].x + mrl[i].x;
+			float3 mom = mrl[idx].x*velocity[idx] + mrl[i].x*velocity[i];
 
 			if (idx < i && totalMass > 0.0) {
 
 				// This particle is aggregated by the other
 				new_vel = mom/totalMass;
-				new_pos = (position[idx]*mass[idx].x + position[i]*mass[i].x)/totalMass;
+				new_pos = (position[idx]*mrl[idx].x + position[i]*mrl[i].x)/totalMass;
 				//luminosity[idx] = ?
-				mass[idx].x = totalMass;
+				mrl[idx].x = totalMass;
 				//radius[idx] = MSRadFromMass(totalMass);
 
 			} else {
 				// This particle dies
-				mass[idx].x = 0.0;
-				radius[idx] = 0.0;
+				mrl[idx].x = 0.0;
+				mrl[idx].z = 0.0;
 				new_vel = 0.0;
 			}
 		}
@@ -381,56 +420,51 @@ void integrateSimple(uint idx, float dt){
 
 }
 void applyStellarEvolution(uint idx, float dt){
-		if (time >= tgb[idx].x && time < tgb[idx].y){ // RGB
-		float ml = mlwindReimers(luminosity[idx], radius[idx], mass[idx].x)*dt;
-		mass[idx].x -= ml;
-		luminosity[idx] = giantLum(tgb[idx].x, lgb[idx].x, 1.44e-5);
-		radius[idx] = RGBRad(mass[idx].x, luminosity[idx]);
+	if (time >= tgb[idx].x && time < tgb[idx].y){ // RGB
+		float ml = mlwindReimers(mrl[idx].w, mrl[idx].z, mrl[idx].x)*dt;
+		mrl[idx].x -= ml;
+		mrl[idx].w = giantLum(tgb[idx].x, lgb[idx].x, 1.44e-5);
+		mrl[idx].z = RGBRad(mrl[idx].x, mrl[idx].w);
 	}  
 	if (time >= tgb[idx].y && time < tgb[idx].z){ //He burning
-		luminosity[idx] = lgb[idx].y; //no evolution for now
-		radius[idx] = RGBRad(mass[idx].x, luminosity[idx]); //this calculation is actually only needed once if the luminosity doesn't change
+		mrl[idx].w = lgb[idx].y; //no evolution for now
+		mrl[idx].z = RGBRad(mrl[idx].x, mrl[idx].w); //this calculation is actually only needed once if the luminosity doesn't change
 	}  
 	if (time >= tgb[idx].z && time < tgb[idx].w){// AGB
 		//for now
-		float ml = mlwindReimers(luminosity[idx], radius[idx], mass[idx].x)*dt;
-		mass[idx].x -= ml;
-		luminosity[idx] = giantLum(tgb[idx].z, lgb[idx].z, 7.66e-5);
-		radius[idx] = AGBRad(mass[idx].x, luminosity[idx]);
+		float ml = mlwindReimers(mrl[idx].w, mrl[idx].z, mrl[idx].x)*dt;
+		mrl[idx].x -= ml;
+		mrl[idx].w = giantLum(tgb[idx].z, lgb[idx].z, 7.66e-5);
+		mrl[idx].z = AGBRad(mrl[idx].x, mrl[idx].w);
 	}  
-	if (time > tgb[idx].w){ //remnant phase
+	if (time >= tgb[idx].w && time < tgb[idx].w + dt && mrl[idx].y > 4){ //supernova
+		mrl[idx].w = -40.0;
+		//apply the kick only to NSs?
+		if (mrl[idx].y > 4.0 && mrl[idx].y <= 20){ 
+			float vkick = 265.*gaussRand(velocity[idx], position[idx]);
+			float3 vCoM = velocity[NumBodies - 1];
+			velocity[idx] = (velocity[idx] - vCoM)*vkick + vCoM;// sigma for NS SNe kick from Hobbs
+		}
+	}
+	if (time > tgb[idx].w + dt){ //remnant phase
 		//approximate divisions
-		radius[idx] = 5.0;
-		if (mass[idx].y > 20.0){ // black holes
-			//supernova
-			if (mass[idx].z < 0){
-				luminosity[idx] = -40.0;
-				mass[idx].z = mass[idx].x;
-			}  else {
-				//set render type
-				luminosity[idx] = -30.0;
-			}
-
-		} else if (mass[idx].y > 4.0){ //neutron stars
-			//supernova
-			if (mass[idx].z < 0){
-				luminosity[idx] = -40.0;
-				mass[idx].z = mass[idx].x;
-				float3 vCoM = velocity[NumBodies - 1];
-				velocity[idx] = (velocity[idx] - vCoM)*265. + vCoM;// sigma for NS SNe kick from Hobbs
-			}  else {
-				//set render type
-				luminosity[idx] = -20.0;
-				mass[idx].x = 2.0;
-			}
-
-		} else { //white dwarfs
+		mrl[idx].z = 5.0;
+		if (mrl[idx].y > 20.0){ // black holes
+			//BH render type
+			mrl[idx].w = -30.0;
+			//assume to mass is lost
+		} 
+		if (mrl[idx].y > 4.0 && mrl[idx].y <= 20){ //neutron stars
+			//NS render type
+			mrl[idx].w = -20.0;
+			mrl[idx].x = 2.0;
+		}
+		if (mrl[idx].y <= 4) { //white dwarfs
 			//set render type
-			luminosity[idx] = -10.0;
-			mass[idx].x = 0.5;
+			mrl[idx].w = -10.0;
+			mrl[idx].x = 0.5;
 
 		}
-
 	} 
 }
 
@@ -445,7 +479,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	uint idx = NumBodies - 1;
 	float dt = deltaTime;
 
-	if (mass[id.x].x > 0.0 && id.x != idx){ //avoid the cluster mass body
+	if (mrl[id.x].x > 0.0 && id.x != idx){ //avoid the cluster mass body
 
 		//integrateVerletWithCollision(id.x, dt);
 		integrateVerletSimple(id.x, dt);

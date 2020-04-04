@@ -33,9 +33,7 @@ public class NbodyCompute : MonoBehaviour {
 
 	public static ComputeBuffer pos_buf;
 	public static ComputeBuffer vel_buf;
-	public static ComputeBuffer mass_buf;
-	public static ComputeBuffer rad_buf;
-	public static ComputeBuffer lum_buf;
+	public static ComputeBuffer mrl_buf;
 	public static ComputeBuffer tgb_buf;
 	public static ComputeBuffer lgb_buf;
 
@@ -49,9 +47,7 @@ public class NbodyCompute : MonoBehaviour {
 	public struct Cluster{
 		public float[] pos_data;
 		public float[] vel_data;
-		public float[] mass_data;
-		public float[] rad_data;
-		public float[] lum_data;
+		public float[] mrl_data;
 		public float[] tgb_data;
 		public float[] lgb_data;
 		public float Mcl;
@@ -87,6 +83,7 @@ public class NbodyCompute : MonoBehaviour {
 		Rhm = val;
 		Random.state = state;
 		doInit();
+
 	}
 	public void vScaleReceiver(float val){
 		vScale = val;
@@ -333,18 +330,14 @@ public class NbodyCompute : MonoBehaviour {
 	void InitStruct(int N){
 		cls.pos_data = new float[N*3*2];
 		cls.vel_data = new float[N*3];
-		cls.mass_data = new float[N*3];
-		cls.rad_data = new float[N];
-		cls.lum_data = new float[N];
+		cls.mrl_data = new float[N*4];
 		cls.tgb_data = new float[N*4];
 		cls.lgb_data = new float[N*4];
 		cls.Mcl = 0.0f;
 
 		cls0.pos_data = new float[N*3*2];
 		cls0.vel_data = new float[N*3];
-		cls0.mass_data = new float[N*3];
-		cls0.rad_data = new float[N];
-		cls0.lum_data = new float[N];
+		cls0.mrl_data = new float[N*4];
 		cls0.tgb_data = new float[N*4];
 		cls0.lgb_data = new float[N*4];
 		cls0.Mcl = 0.0f;
@@ -356,11 +349,10 @@ public class NbodyCompute : MonoBehaviour {
 		//set these all to zero
 		for (int i = N; i < NumBodiesMax; i++){
 
-			cls.mass_data[i*3] = 0.0f; //solMass m(t)
-			cls.mass_data[i*3 + 1] = 0.0f; //solMass m(t=0)
-			cls.mass_data[i*3 + 2] = 0.0f; //solMass mcore
-			cls.rad_data[i] = 0.0f; //solRad
-			cls.lum_data[i] = 1.0f; //solar units
+			cls.mrl_data[i*4] = 0.0f; //solMass m(t)
+			cls.mrl_data[i*4 + 1] = 0.0f; //solMass m(t=0)
+			cls.mrl_data[i*4 + 2] = 0.0f; //solRad
+			cls.mrl_data[i*4 + 3] = 1.0f; //solLum
 
 			cls.tgb_data[i*4] = 1e10f; //tbrgb Myr
 			cls.tgb_data[i*4 + 1] = 1e10f; //tbHe Myr
@@ -381,13 +373,12 @@ public class NbodyCompute : MonoBehaviour {
 	void resetStars(int N){
 		cls.Mcl = 0.0f;
 		for (int i = 0; i < N; i++){
-			cls.Mcl += cls0.mass_data[i*3];
+			cls.Mcl += cls0.mrl_data[i*4];
 
-			cls.mass_data[i*3] = cls0.mass_data[i*3]; //solMass m(t)
-			cls.mass_data[i*3 + 1] = cls0.mass_data[i*3 + 1]; //solMass m(t=0)
-			cls.mass_data[i*3 + 2] = cls0.mass_data[i*3 + 2]; //solMass mcore
-			cls.rad_data[i] = cls0.rad_data[i]; //solRad
-			cls.lum_data[i] = cls0.lum_data[i]; //solar units
+			cls.mrl_data[i*4] = cls0.mrl_data[i*4]; //solMass m(t)
+			cls.mrl_data[i*4 + 1] = cls0.mrl_data[i*4 + 1]; //solMass m(t=0)
+			cls.mrl_data[i*4 + 2] = cls0.mrl_data[i*4 + 2]; //solRad
+			cls.mrl_data[i*4 + 3] = cls0.mrl_data[i*4 + 3]; //solLum
 
 			cls.tgb_data[i*4] = cls0.tgb_data[i*4]; //tbrgb Myr
 			cls.tgb_data[i*4 + 1] = cls0.tgb_data[i*4 + 1]; //tbHe Myr
@@ -426,11 +417,10 @@ public class NbodyCompute : MonoBehaviour {
 
 			cls0.Mcl += m;
 
-			cls0.mass_data[i*3] = m; //solMass m(t)
-			cls0.mass_data[i*3 + 1] = m; //solMass m(t=0)
-			cls0.mass_data[i*3 + 2] = -1.0f; //solMass mcore
-			cls0.rad_data[i] = r; //solRad
-			cls0.lum_data[i] = L; //solar units
+			cls0.mrl_data[i*4] = m; //solMass m(t)
+			cls0.mrl_data[i*4 + 1] = m; //solMass m(t=0)
+			cls0.mrl_data[i*4 + 2] = r; //solRad
+			cls0.mrl_data[i*4 + 3] = L; //solLum
 
 			TL t = tlgb(m, L);
 			cls0.tgb_data[i*4] = Mathf.Clamp(t.times[0], 0.0f, 14000f); //tbrgb Myr
@@ -750,7 +740,7 @@ public class NbodyCompute : MonoBehaviour {
 		Debug.Log("cluster mass, velocity, Rhm, rtide, vscale, Mgal = "+cls.Mcl+" "+vGc+" "+Rhm+" "+Rtide+" "+vScale+" "+galMass);
 
 		//now set the positions and velocities
-		for (i = 0; i < N; i++){
+		for (i = 0; i < N-1; i++){
 
 			//positions
 
@@ -829,8 +819,7 @@ public class NbodyCompute : MonoBehaviour {
 		cls.vel_data[i*3] = vGc.x;
 		cls.vel_data[i*3 + 1] = vGc.y;
 		cls.vel_data[i*3 + 2] = vGc.z;
-		cls.mass_data[i*3] = cls.Mcl; 
-		cls.rad_data[i] = 0.0f; 
+		cls.mrl_data[i*4] = cls.Mcl; 
 
 	}
 
@@ -907,8 +896,7 @@ public class NbodyCompute : MonoBehaviour {
 		cls.vel_data[i*3] = vcirc.x;
 		cls.vel_data[i*3 + 1] = vcirc.y;
 		cls.vel_data[i*3 + 2] = vcirc.z;
-		cls.mass_data[i*3] = cls.Mcl; 
-		cls.rad_data[i] = 0.0f; 
+		cls.mrl_data[i*4] = cls.Mcl; 
 
 	}
 	void InitBuffers(int N){
@@ -919,18 +907,14 @@ public class NbodyCompute : MonoBehaviour {
 		// with floatSize = 12, this works for 10k, 15k and 30k particles, but not 20k
 		pos_buf = new ComputeBuffer(2*N, 3*floatSize, ComputeBufferType.Default);
 		vel_buf = new ComputeBuffer(N, 3*floatSize, ComputeBufferType.Default);
-		mass_buf = new ComputeBuffer(N, 3*floatSize, ComputeBufferType.Default); //mnow, m0, mcore (currently don't have mcore)
-		rad_buf = new ComputeBuffer(N, floatSize, ComputeBufferType.Default);
-		lum_buf = new ComputeBuffer(N, floatSize, ComputeBufferType.Default);
+		mrl_buf = new ComputeBuffer(N, 4*floatSize, ComputeBufferType.Default); //mnow, m0, rad, lum
 		tgb_buf = new ComputeBuffer(N, 4*floatSize, ComputeBufferType.Default);
 		lgb_buf = new ComputeBuffer(N, 4*floatSize, ComputeBufferType.Default);
 
 		// These global buffers apply to every shader with these buffers defined.
 		Shader.SetGlobalBuffer(Shader.PropertyToID("position"), pos_buf);
 		Shader.SetGlobalBuffer(Shader.PropertyToID("velocity"), vel_buf);
-		Shader.SetGlobalBuffer(Shader.PropertyToID("mass"), mass_buf);
-		Shader.SetGlobalBuffer(Shader.PropertyToID("radius"), rad_buf);
-		Shader.SetGlobalBuffer(Shader.PropertyToID("luminosity"), lum_buf);
+		Shader.SetGlobalBuffer(Shader.PropertyToID("mrl"), mrl_buf);
 		Shader.SetGlobalBuffer(Shader.PropertyToID("tgb"), tgb_buf);
 		Shader.SetGlobalBuffer(Shader.PropertyToID("lgb"), lgb_buf);
 
@@ -942,9 +926,7 @@ public class NbodyCompute : MonoBehaviour {
 	void SetShaderData(){
 		pos_buf.SetData(cls.pos_data);
 		vel_buf.SetData(cls.vel_data);
-		mass_buf.SetData(cls.mass_data);
-		rad_buf.SetData(cls.rad_data);
-		lum_buf.SetData(cls.lum_data);
+		mrl_buf.SetData(cls.mrl_data);
 		tgb_buf.SetData(cls.tgb_data);
 		lgb_buf.SetData(cls.lgb_data);
 	}
@@ -952,9 +934,7 @@ public class NbodyCompute : MonoBehaviour {
 	void DisposeOfBuffers(){
 		pos_buf.Dispose();
 		vel_buf.Dispose();
-		mass_buf.Dispose();
-		rad_buf.Dispose();
-		lum_buf.Dispose();
+		mrl_buf.Dispose();
 		tgb_buf.Dispose();
 		lgb_buf.Dispose();
 	}
