@@ -5,7 +5,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 public class NbodyRenderer : MonoBehaviour {
-	public Material material;
+	public Material DynamicsMaterial;
+	public Material HRMaterial;
 
 	public Texture colormap;
 	public float minSize = 0.02f;
@@ -108,7 +109,6 @@ public class NbodyRenderer : MonoBehaviour {
 				//matrix.SetTRS(Vector3.zero, Quaternion.Euler(Vector3.zero), Vector3.one);
 				//THIS SETTING IS VERY IMPORTANT.  Instancing will only be active (and therefore the object will only be drawn) when the first Vector3 is within the camera's view.  For instance, if it is set to Vector3.zero, the Nbody particles will only be drawn when the scene's origin is in view of the camera!
 				matrix.SetTRS(CameraTarget.position, Quaternion.Euler(Vector3.zero), Vector3.one);
-				//matrix.SetTRS(Vector3.zero, Quaternion.Euler(Vector3.zero), Vector3.one);
 				transformList[set][i] = matrix;
 			}
 		}
@@ -139,7 +139,8 @@ public class NbodyRenderer : MonoBehaviour {
 			}
 
 
-			Graphics.DrawMeshInstanced(mesh, 0, material, transformList[set], instances[set], mpb);
+			Graphics.DrawMeshInstanced(mesh, 0, DynamicsMaterial, transformList[set], instances[set], mpb);
+			Graphics.DrawMeshInstanced(mesh, 0, HRMaterial, transformList[set], instances[set], mpb);
 		}
 	}
 }
