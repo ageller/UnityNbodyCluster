@@ -9,7 +9,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{73F95C1C-9432-3080-9F44-560BC5D6880A}</ProjectGuid>
+    <ProjectGuid>{D3C671CA-95DF-3A09-93C3-2FA1CE143BF9}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>Assembly-CSharp</AssemblyName>
@@ -54,29 +54,34 @@
   </ItemGroup>
   <ItemGroup>
      <Compile Include="Assets\Scripts\ButtonController.cs" />
-     <Compile Include="Assets\Scripts\CameraController.cs" />
-     <Compile Include="Assets\Scripts\FPSDisplay.cs" />
+     <Compile Include="Assets\Scripts\constants.cs" />
+     <Compile Include="Assets\Scripts\GalaxyCloudForge.cs" />
+     <Compile Include="Assets\Scripts\GUITextDisplay.cs" />
      <Compile Include="Assets\Scripts\MouseOrbitImproved.cs" />
      <Compile Include="Assets\Scripts\NbodyCompute.cs" />
+     <Compile Include="Assets\Scripts\NbodyComputeDropdownController.cs" />
+     <Compile Include="Assets\Scripts\NbodyComputeSliderController.cs" />
      <Compile Include="Assets\Scripts\NbodyRenderer.cs" />
-     <Compile Include="Assets\Scripts\SliderController.cs" />
-     <Compile Include="Assets\Scripts\TimeDisplay.cs" />
+     <Compile Include="Assets\Scripts\NbodyRendererSliderController.cs" />
+     <Compile Include="Assets\Scripts\panMover.cs" />
+     <Compile Include="Assets\Scripts\TrailController.cs" />
      <None Include="Assets\Shaders\StarShader.shader" />
      <None Include="Assets\Shaders\NbodyCompute.compute" />
+     <None Include="Assets\Shaders\HRDShader.shader" />
  <Reference Include="Unity.TextMeshPro.Editor">
- <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/NbodySimulator/Library/ScriptAssemblies/Unity.TextMeshPro.Editor.dll</HintPath>
+ <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/UnityNbodyCluster/Library/ScriptAssemblies/Unity.TextMeshPro.Editor.dll</HintPath>
  </Reference>
  <Reference Include="Unity.PackageManagerUI.Editor">
- <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/NbodySimulator/Library/ScriptAssemblies/Unity.PackageManagerUI.Editor.dll</HintPath>
+ <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/UnityNbodyCluster/Library/ScriptAssemblies/Unity.PackageManagerUI.Editor.dll</HintPath>
  </Reference>
  <Reference Include="Unity.CollabProxy.Editor">
- <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/NbodySimulator/Library/ScriptAssemblies/Unity.CollabProxy.Editor.dll</HintPath>
+ <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/UnityNbodyCluster/Library/ScriptAssemblies/Unity.CollabProxy.Editor.dll</HintPath>
  </Reference>
  <Reference Include="Unity.TextMeshPro">
- <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/NbodySimulator/Library/ScriptAssemblies/Unity.TextMeshPro.dll</HintPath>
+ <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/UnityNbodyCluster/Library/ScriptAssemblies/Unity.TextMeshPro.dll</HintPath>
  </Reference>
  <Reference Include="Unity.Analytics.DataPrivacy">
- <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/NbodySimulator/Library/ScriptAssemblies/Unity.Analytics.DataPrivacy.dll</HintPath>
+ <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/UnityNbodyCluster/Library/ScriptAssemblies/Unity.Analytics.DataPrivacy.dll</HintPath>
  </Reference>
  <Reference Include="UnityEngine.AIModule">
  <HintPath>/Applications/Unity/Unity.app/Contents/Managed/UnityEngine/UnityEngine.AIModule.dll</HintPath>
@@ -283,13 +288,13 @@
  <HintPath>/Applications/Unity/Unity.app/Contents/UnityExtensions/Unity/UnitySpatialTracking/RuntimeEditor/UnityEngine.SpatialTracking.dll</HintPath>
  </Reference>
  <Reference Include="Unity.Analytics.Editor">
- <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/NbodySimulator/Library/PackageCache/com.unity.analytics@3.2.2/Unity.Analytics.Editor.dll</HintPath>
+ <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/UnityNbodyCluster/Library/PackageCache/com.unity.analytics@3.2.2/Unity.Analytics.Editor.dll</HintPath>
  </Reference>
  <Reference Include="Unity.Analytics.StandardEvents">
- <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/NbodySimulator/Library/PackageCache/com.unity.analytics@3.2.2/Unity.Analytics.StandardEvents.dll</HintPath>
+ <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/UnityNbodyCluster/Library/PackageCache/com.unity.analytics@3.2.2/Unity.Analytics.StandardEvents.dll</HintPath>
  </Reference>
  <Reference Include="Unity.Analytics.Tracker">
- <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/NbodySimulator/Library/PackageCache/com.unity.analytics@3.2.2/Unity.Analytics.Tracker.dll</HintPath>
+ <HintPath>/Volumes/highnoon2go/highnoon/VISUALIZATIONS/Unity/UnityNbodyCluster/Library/PackageCache/com.unity.analytics@3.2.2/Unity.Analytics.Tracker.dll</HintPath>
  </Reference>
  <Reference Include="netstandard">
  <HintPath>/Applications/Unity/Unity.app/Contents/NetStandard/ref/2.0.0/netstandard.dll</HintPath>

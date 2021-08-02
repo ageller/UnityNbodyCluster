@@ -140,7 +140,7 @@ public class NbodyRenderer : MonoBehaviour {
 
 
 			Graphics.DrawMeshInstanced(mesh, 0, DynamicsMaterial, transformList[set], instances[set], mpb);
-			Graphics.DrawMeshInstanced(mesh, 0, HRMaterial, transformList[set], instances[set], mpb);
+			//Graphics.DrawMeshInstanced(mesh, 0, HRMaterial, transformList[set], instances[set], mpb);
 		}
 	}
 }
