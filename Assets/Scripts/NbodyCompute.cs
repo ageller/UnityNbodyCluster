@@ -784,17 +784,43 @@ public class NbodyCompute : MonoBehaviour {
 			cls.pos_data[i*3 + 2 + NumBodiesMax] = z;
 
 			//velocities
-			float X4 = Random.Range(0.0f, 1.0f);
-			float X5 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
-			//velocities
-			//It seems like there is a factor of 2 missing somewhere.  Using these velocities, the cluster always flies apart
-			float phi = -CONSTANTS.G*cls.Mcl/rpl*Mathf.Pow(1.0f + Mathf.Pow(r/rpl, 2.0f), -0.5f);
-			vesc = Mathf.Sqrt(-2.0f*phi);
-			float v = psi*vesc*vScale*0.5f; //added factor of 0.5 here, not sure it's correct, but it seems needed to avoid the cluster exploding initially
-			float vz = (2.0f*X4 - 1.0f)*v;
+			// use von Neumann's rejection technique to sample velocity distribution
+			// this is might be slow...
+			float v = 0.0f;
+			// escape velocity at r 
+			float vesc = Mathf.Pow( 2.0f*CONSTANTS.G*cls.Mcl/rpl*Mathf.Pow(1 + Mathf.Pow(r/rpl, 2.0f), -0.5f), 0.5f)*vScale;
+			
+			bool done = false;
+			while (done == false){
+				float X4 = Random.Range(0.0f, 1.0f);
+				float X5 = Random.Range(0.0f, 1.0f);
+				float g = Mathf.Pow(X4,2.0f)*Mathf.Pow(1.0f - Mathf.Pow(X4,2.0f), 7.0f/2.0f);
+				if (X5 < 10.0f*g){
+					v = X4*vesc;
+					done = true;        
+				}
+			}
+
+			// separate the components using the same method as for positions
+			float X6 = Random.Range(0.0f, 1.0f);
+			float X7 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
+			float vz = (2.0f*X6 - 1.0f)*v;
 			float vxy = Mathf.Sqrt(v*v - vz*vz);
-			float vx = vxy*Mathf.Cos(X5);
-			float vy = vxy*Mathf.Sin(X5);
+			float vx = vxy*Mathf.Cos(X7);
+			float vy = vxy*Mathf.Sin(X7);
+
+			// original incorrect method!
+			// float X4 = Random.Range(0.0f, 1.0f);
+			// float X5 = Random.Range(0.0f, 2.0f*CONSTANTS.pi);
+			// //velocities
+			// //It seems like there is a factor of 2 missing somewhere.  Using these velocities, the cluster always flies apart
+			// float phi = -CONSTANTS.G*cls.Mcl/rpl*Mathf.Pow(1.0f + Mathf.Pow(r/rpl, 2.0f), -0.5f);
+			// vesc = Mathf.Sqrt(-2.0f*phi);
+			// float v = psi*vesc*vScale*0.5f; //added factor of 0.5 here, not sure it's correct, but it seems needed to avoid the cluster exploding initially
+			// float vz = (2.0f*X4 - 1.0f)*v;
+			// float vxy = Mathf.Sqrt(v*v - vz*vz);
+			// float vx = vxy*Mathf.Cos(X5);
+			// float vy = vxy*Mathf.Sin(X5);
 
 			//I don't think there's anything special about the velocities in Fractalize (rigtht?)
 			// if (DFractal < 3){
